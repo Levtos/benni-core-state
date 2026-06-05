@@ -3,6 +3,28 @@
 Alle nennenswerten Änderungen an dieser Integration. Neuester Eintrag oben.
 Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
+## [0.2.0] – 2026-06-05
+
+### Added
+- **Vanilla-Lit-Panel** „Core State" in der HA-Sidebar (Muster aus
+  `benni_light_policy`): `view.py` (Static-Path + Custom-Panel),
+  `websocket_api.py` (`benni_core_state/get_status` — States, Attribute,
+  Input-Readiness), `frontend/app/` (main/store/styles + Views **Übersicht**
+  und **Diagnose**). Bio-Aktionen (mark_sleep/waking/mark_awake) laufen über
+  die regulären Services.
+- **`ENTITY_PREFILL`** (Konvention wie light_policy): der Config-Flow belegt die
+  Quell-Slots mit bekannten Live-IDs vor, gefiltert auf real existierende
+  Entities — auf der getrennten Eltern-Anlage greift es schadlos nicht.
+- **`bei_eltern`-Quelle**: `wlan_eltern_1` wird mit
+  `binary_sensor.benni_bei_eltern_wlan` (SSID == „Martin Router King 2")
+  vorbelegt.
+
+### Changed
+- `wlan_eltern_*`-Selektoren akzeptieren `binary_sensor`/`input_boolean`
+  zusätzlich zu `device_tracker` (für den SSID-Template-Sensor).
+- `manifest.json`: `dependencies: [http, websocket_api, frontend]` (Panel),
+  Version 0.2.0.
+
 ## [0.1.0] – 2026-06-04
 
 ### Added

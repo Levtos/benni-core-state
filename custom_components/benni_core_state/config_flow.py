@@ -57,6 +57,7 @@ from .const import (
     DEFAULT_TRACKER_FRESHNESS,
     DEFAULT_TRANSITION_HOLD,
     DOMAIN,
+    ENTITY_PREFILL,
     NAME,
 )
 
@@ -131,13 +132,24 @@ class BenniCoreStateConfigFlow(ConfigFlow, domain=DOMAIN):
     def __init__(self) -> None:
         self._entities: dict[str, Any] = {}
 
+    def _prefill_defaults(self) -> dict[str, Any]:
+        """ENTITY_PREFILL, gefiltert auf Entities, die in dieser HA existieren.
+
+        Auf der Eltern-Anlage existieren die Benni-IDs nicht → Slots bleiben leer.
+        """
+        return {
+            key: eid
+            for key, eid in ENTITY_PREFILL.items()
+            if self.hass.states.get(eid) is not None
+        }
+
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         # Single-instance gate.
         if self._async_current_entries():
             return self.async_abort(reason="single_instance_allowed")
         if user_input is None:
             return self.async_show_form(
-                step_id="user", data_schema=_entities_schema({}),
+                step_id="user", data_schema=_entities_schema(self._prefill_defaults()),
             )
         self._entities = {k: v for k, v in user_input.items() if v}
         return await self.async_step_thresholds()

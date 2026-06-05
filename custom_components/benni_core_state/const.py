@@ -129,6 +129,23 @@ ACTIVITY_STATES = [
     ACT_PRIVATE, ACT_HOUSEHOLD,
 ]
 
+# --- Auto-Prefill ------------------------------------------------------------
+
+# Bekannte Live-Entity-IDs der Benni-Anlage, mit denen der Config-Flow die
+# Quell-Slots vorbelegt (Konvention wie benni_light_policy: ``ENTITY_PREFILL``).
+# Wirkt nur, WENN die Entity in HA existiert — auf der getrennten Eltern-Anlage
+# (Profil "eltern") greift es schadlos nicht und die Slots bleiben leer.
+# Best-Guesses aus der Live-Anlage; im Flow jederzeit überschreibbar.
+ENTITY_PREFILL: dict[str, str] = {
+    CONF_GPS_PRIMARY: "device_tracker.benni_iphone_icloud3",
+    CONF_GPS_SECONDARY: "device_tracker.iphone_von_benjamin",
+    CONF_WLAN_ELTERN_1: "binary_sensor.benni_bei_eltern_wlan",
+    CONF_PC_ACTIVE: "binary_sensor.living_pc_plug_power_active_atomic",
+    CONF_WAKE_NEEDED: "binary_sensor.wake_planner_benni_wake_needed",
+    CONF_WAKE_NEXT: "sensor.wake_planner_benni_next_wake",
+    CONF_MEDIA_CONTEXT: "sensor.benni_media_context_media_context",
+}
+
 # --- Storage -----------------------------------------------------------------
 
 STORAGE_VERSION = 1
@@ -156,3 +173,21 @@ UPDATE_INTERVAL = 30
 SERVICE_SET_BIO = "set_bio_state"
 SERVICE_MARK_SLEEP = "mark_sleep"
 SERVICE_MARK_AWAKE = "mark_awake"
+
+# --- Panel / WebSocket-API (eigenes Dashboard-Frontend) ----------------------
+# Muster wie benni_light_policy: statisch ausgeliefertes Vanilla-Lit-Frontend
+# unter FRONTEND_DIR_URL + Custom-Panel in der Sidebar.
+PANEL_URL_PATH = "benni_core_state"          # Sidebar-Eintrag
+PANEL_TITLE = "Core State"
+PANEL_ICON = "mdi:brain"
+FRONTEND_DIR_URL = "/benni_core_state_app"   # statisch ausgelieferte App
+FRONTEND_ENTRY = f"{FRONTEND_DIR_URL}/main.js"
+PANEL_ELEMENT = "bcs-app"
+
+# WS-Commands (Namespace = Domain).
+WS_GET_STATUS = f"{DOMAIN}/get_status"
+
+# hass.data[DOMAIN]-Flags für prozessweit-einmalige Registrierungen.
+DATA_WS_REGISTERED = "_ws_registered"
+DATA_VIEW_STATIC = "_view_static_registered"
+DATA_VIEW_PANEL = "_view_panel_registered"

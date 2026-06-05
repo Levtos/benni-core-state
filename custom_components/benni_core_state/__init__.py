@@ -18,9 +18,11 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 
-from .const import DOMAIN
-from .coordinator import BenniCoreStateCoordinator
+from .const import DATA_WS_REGISTERED, DOMAIN
+from .coordinator import BenniCoreStateCoordinator, all_coordinators
 from .services import async_register_services, async_unregister_services
+from .view import async_remove_view, async_setup_view
+from .websocket_api import async_setup_websocket_api
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -32,7 +34,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await coordinator.async_load_stored()
     await coordinator.async_config_entry_first_refresh()
 
-    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
+    data = hass.data.setdefault(DOMAIN, {})
+    data[entry.entry_id] = coordinator
 
     coordinator.async_start_listeners()
     entry.async_on_unload(coordinator.async_stop_listeners)
@@ -40,6 +43,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     async_register_services(hass)
+
+    # Panel + WebSocket-API (Dashboard-Frontend). WS einmalig pro HA-Prozess.
+    await async_setup_view(hass)
+    if not data.get(DATA_WS_REGISTERED):
+        async_setup_websocket_api(hass)
+        data[DATA_WS_REGISTERED] = True
+
     entry.async_on_unload(entry.add_update_listener(_async_reload_on_options))
     return True
 
@@ -52,9 +62,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
         if coordinator is not None:
             coordinator.async_stop_listeners()
-        # Letzten Entry → Services abräumen.
-        if not hass.data.get(DOMAIN):
+        # Kein Coordinator mehr → Services + Panel abräumen.
+        if not all_coordinators(hass):
             async_unregister_services(hass)
+            async_remove_view(hass)
     return unloaded
 
 
