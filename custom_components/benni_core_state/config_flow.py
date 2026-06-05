@@ -55,10 +55,14 @@ from .const import (
     DEFAULT_PREHEAT_DURATION,
     DEFAULT_PREHEAT_RADIUS,
     DEFAULT_TRACKER_FRESHNESS,
+    CONF_PROFILE,
+    DEFAULT_PROFILE,
     DEFAULT_TRANSITION_HOLD,
     DOMAIN,
-    ENTITY_PREFILL,
     NAME,
+    PROFILE_LABELS,
+    PROFILE_PREFILL,
+    PROFILES,
 )
 
 
@@ -126,30 +130,54 @@ def _thresholds_schema(defaults: dict[str, Any]) -> vol.Schema:
     })
 
 
+def _profile_schema(default: str) -> vol.Schema:
+    return vol.Schema({
+        vol.Required(CONF_PROFILE, default=default): selector.SelectSelector(
+            selector.SelectSelectorConfig(
+                mode=selector.SelectSelectorMode.LIST,
+                options=[
+                    selector.SelectOptionDict(value=p, label=PROFILE_LABELS[p])
+                    for p in PROFILES
+                ],
+            )
+        )
+    })
+
+
 class BenniCoreStateConfigFlow(ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
     def __init__(self) -> None:
+        self._profile: str = DEFAULT_PROFILE
         self._entities: dict[str, Any] = {}
 
     def _prefill_defaults(self) -> dict[str, Any]:
-        """ENTITY_PREFILL, gefiltert auf Entities, die in dieser HA existieren.
+        """Profil-Prefill, gefiltert auf Entities, die in dieser HA existieren.
 
-        Auf der Eltern-Anlage existieren die Benni-IDs nicht → Slots bleiben leer.
+        Profil "eltern" hat (vorerst) keine Defaults → alle Slots leer.
         """
+        prefill = PROFILE_PREFILL.get(self._profile, {})
         return {
             key: eid
-            for key, eid in ENTITY_PREFILL.items()
+            for key, eid in prefill.items()
             if self.hass.states.get(eid) is not None
         }
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> FlowResult:
-        # Single-instance gate.
+        # Single-instance gate (eine Route pro HA; saubere Entity-IDs).
         if self._async_current_entries():
             return self.async_abort(reason="single_instance_allowed")
         if user_input is None:
             return self.async_show_form(
-                step_id="user", data_schema=_entities_schema(self._prefill_defaults()),
+                step_id="user", data_schema=_profile_schema(DEFAULT_PROFILE),
+            )
+        self._profile = user_input[CONF_PROFILE]
+        return await self.async_step_entities()
+
+    async def async_step_entities(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        if user_input is None:
+            return self.async_show_form(
+                step_id="entities", data_schema=_entities_schema(self._prefill_defaults()),
             )
         self._entities = {k: v for k, v in user_input.items() if v}
         return await self.async_step_thresholds()
@@ -159,8 +187,11 @@ class BenniCoreStateConfigFlow(ConfigFlow, domain=DOMAIN):
             return self.async_show_form(
                 step_id="thresholds", data_schema=_thresholds_schema({}),
             )
+        data = {CONF_PROFILE: self._profile, **self._entities}
         return self.async_create_entry(
-            title=NAME, data=self._entities, options=user_input
+            title=f"{NAME} ({PROFILE_LABELS[self._profile]})",
+            data=data,
+            options=user_input,
         )
 
     @staticmethod

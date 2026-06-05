@@ -120,11 +120,14 @@ class BcsApp extends HTMLElement {
     const st = s.state || {};
     const f = s.foundation || {};
     chips.innerHTML = [
+      chip("info", `Route: ${s.profile_label ?? s.profile ?? "—"}`),
       chip(f.total && f.ok === f.total ? "ok" : "warn", `Inputs ${f.ok ?? 0}/${f.total ?? 0}`),
       chip("info", `Presence: ${st.presence_personal ?? "—"}`),
       chip("info", `Bio: ${st.bio_state ?? "—"}`),
       chip(st.preheat_active ? "ok" : "info", st.preheat_active ? "Preheat an" : "Preheat aus"),
     ].join("");
+    const foot = this.shadowRoot.getElementById("sbfoot");
+    if (foot) foot.textContent = `benni_core_state · ${s.profile_label ?? s.profile ?? ""}`;
   }
 
   _renderView() {

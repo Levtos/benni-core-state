@@ -53,6 +53,7 @@ from .const import (
     CONF_TRANSITION_HOLD,
     CONF_WAKE_NEEDED,
     CONF_WAKE_NEXT,
+    CONF_PROFILE,
     CONF_WLAN_BENNI,
     CONF_WLAN_ELTERN_1,
     CONF_WLAN_ELTERN_2,
@@ -61,6 +62,7 @@ from .const import (
     DEFAULT_NEAR_RADIUS,
     DEFAULT_PREHEAT_DURATION,
     DEFAULT_PREHEAT_RADIUS,
+    DEFAULT_PROFILE,
     DEFAULT_TRACKER_FRESHNESS,
     DEFAULT_TRANSITION_HOLD,
     DOMAIN,
@@ -98,6 +100,10 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
 
     def _opt(self, key: str, default: Any) -> Any:
         return self.entry.options.get(key, self.entry.data.get(key, default))
+
+    @property
+    def profile(self) -> str:
+        return self.entry.data.get(CONF_PROFILE, DEFAULT_PROFILE)
 
     @property
     def home_radius(self) -> float:

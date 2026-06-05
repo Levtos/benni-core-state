@@ -129,21 +129,33 @@ ACTIVITY_STATES = [
     ACT_PRIVATE, ACT_HOUSEHOLD,
 ]
 
-# --- Auto-Prefill ------------------------------------------------------------
+# --- Profile (Route benni / eltern) ------------------------------------------
 
-# Bekannte Live-Entity-IDs der Benni-Anlage, mit denen der Config-Flow die
-# Quell-Slots vorbelegt (Konvention wie benni_light_policy: ``ENTITY_PREFILL``).
-# Wirkt nur, WENN die Entity in HA existiert — auf der getrennten Eltern-Anlage
-# (Profil "eltern") greift es schadlos nicht und die Slots bleiben leer.
-# Best-Guesses aus der Live-Anlage; im Flow jederzeit überschreibbar.
-ENTITY_PREFILL: dict[str, str] = {
-    CONF_GPS_PRIMARY: "device_tracker.benni_iphone_icloud3",
-    CONF_GPS_SECONDARY: "device_tracker.iphone_von_benjamin",
-    CONF_WLAN_ELTERN_1: "binary_sensor.benni_bei_eltern_wlan",
-    CONF_PC_ACTIVE: "binary_sensor.living_pc_plug_power_active_atomic",
-    CONF_WAKE_NEEDED: "binary_sensor.wake_planner_benni_wake_needed",
-    CONF_WAKE_NEXT: "sensor.wake_planner_benni_next_wake",
-    CONF_MEDIA_CONTEXT: "sensor.benni_media_context_media_context",
+# Beim Hinzufügen der Integration wird die "Route" gewählt: dieselbe Codebasis,
+# aber profil-spezifische Defaults (Prefill) und ein gespeichertes Label fürs
+# Panel/Device. Logik bleibt (vorerst) identisch — Profil ist Vorarbeit für
+# spätere, bewusst gegatete Verhaltens-Unterschiede.
+CONF_PROFILE = "profile"
+PROFILE_BENNI = "benni"
+PROFILE_ELTERN = "eltern"
+PROFILES = [PROFILE_BENNI, PROFILE_ELTERN]
+DEFAULT_PROFILE = PROFILE_BENNI
+PROFILE_LABELS = {PROFILE_BENNI: "Benni", PROFILE_ELTERN: "Eltern"}
+
+# Per-Profil-Prefill: bekannte Live-IDs je Route. Greift nur, WENN die Entity in
+# der jeweiligen HA existiert. "eltern" bewusst leer — wird befüllt, sobald die
+# Eltern-Anlage real ist. (Konvention wie benni_light_policy: ENTITY_PREFILL.)
+PROFILE_PREFILL: dict[str, dict[str, str]] = {
+    PROFILE_BENNI: {
+        CONF_GPS_PRIMARY: "device_tracker.benni_iphone_icloud3",
+        CONF_GPS_SECONDARY: "device_tracker.iphone_von_benjamin",
+        CONF_WLAN_ELTERN_1: "binary_sensor.benni_bei_eltern_wlan",
+        CONF_PC_ACTIVE: "binary_sensor.living_pc_plug_power_active_atomic",
+        CONF_WAKE_NEEDED: "binary_sensor.wake_planner_benni_wake_needed",
+        CONF_WAKE_NEXT: "sensor.wake_planner_benni_next_wake",
+        CONF_MEDIA_CONTEXT: "sensor.benni_media_context_media_context",
+    },
+    PROFILE_ELTERN: {},
 }
 
 # --- Storage -----------------------------------------------------------------

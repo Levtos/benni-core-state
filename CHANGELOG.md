@@ -3,6 +3,24 @@
 Alle nennenswerten Änderungen an dieser Integration. Neuester Eintrag oben.
 Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
+## [0.3.0] – 2026-06-05
+
+### Added
+- **Profil-Hub / Route-Auswahl**: Beim Hinzufügen der Integration wird zuerst die
+  Route gewählt (`user`-Step: **Benni** / **Eltern**), dann Entities, dann
+  Thresholds. Profil wird im Config-Entry gespeichert.
+- **Profil im Entity-Slug** über den Device-Namen (`<Profil> Core State`):
+  Route Benni → `sensor.benni_core_state_*`, Route Eltern →
+  `sensor.eltern_core_state_*`. Integration-Domain bleibt `benni_core_state`.
+- **Per-Profil-Prefill** (`PROFILE_PREFILL`): Benni vorbefüllt, Eltern bewusst
+  leer (kommt, wenn die Eltern-Anlage real wird).
+- Panel zeigt die aktive **Route** (Chip + Footer); WS `get_status` liefert
+  `profile`/`profile_label`.
+
+### Changed
+- `ENTITY_PREFILL` → `PROFILE_PREFILL` (profil-gestaffelt).
+- Config-Flow von 2- auf 3-stufig (Route → Entities → Thresholds).
+
 ## [0.2.0] – 2026-06-05
 
 ### Added

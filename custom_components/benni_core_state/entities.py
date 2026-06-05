@@ -24,14 +24,16 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import (
     ACTIVITY_STATES,
     BIO_STATES,
+    CONF_PROFILE,
     DAY_CONTEXT_STATES,
     DAY_STATES,
+    DEFAULT_PROFILE,
     DOMAIN,
-    NAME,
     PRESENCE_BAND_STATES,
     PRESENCE_HOUSEHOLD_STATES,
     PRESENCE_PERSONAL_STATES,
     PRESENCE_TRANSITION_STATES,
+    PROFILE_LABELS,
     unique_id,
 )
 from .coordinator import BenniCoreStateCoordinator, coordinator_from_hass
@@ -70,11 +72,16 @@ SENSORS: tuple[_Desc, ...] = (
 
 
 def _device_info(entry: ConfigEntry) -> dict[str, Any]:
+    # Der Device-Name bestimmt bei has_entity_name den Entity-Slug:
+    #   "Benni Core State"  → sensor.benni_core_state_*
+    #   "Eltern Core State" → sensor.eltern_core_state_*
+    profile = entry.data.get(CONF_PROFILE, DEFAULT_PROFILE)
+    label = PROFILE_LABELS.get(profile, "Benni")
     return {
         "identifiers": {(DOMAIN, entry.entry_id)},
-        "name": NAME,
+        "name": f"{label} Core State",
         "manufacturer": "Benni",
-        "model": "Core State",
+        "model": f"Core State · {label}",
     }
 
 

@@ -33,6 +33,7 @@ from .const import (
     CONF_WLAN_BENNI,
     CONF_WLAN_ELTERN_1,
     CONF_WLAN_ELTERN_2,
+    PROFILE_LABELS,
     WS_GET_STATUS,
 )
 from .coordinator import all_coordinators
@@ -96,13 +97,15 @@ def _inputs(hass: HomeAssistant, coord) -> tuple[list[dict[str, Any]], dict[str,
 
 def _status(hass: HomeAssistant, coord) -> dict[str, Any]:
     data = coord.data
+    profile = {"profile": coord.profile, "profile_label": PROFILE_LABELS.get(coord.profile, coord.profile)}
     if data is None:
         rows, foundation = _inputs(hass, coord)
-        return {"available": False, "inputs": rows, "foundation": foundation}
+        return {"available": False, "inputs": rows, "foundation": foundation, **profile}
 
     rows, foundation = _inputs(hass, coord)
     return {
         "available": True,
+        **profile,
         "last_update_success": coord.last_update_success,
         "state": {
             "presence_personal": data.presence_personal,

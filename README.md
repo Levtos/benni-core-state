@@ -41,9 +41,15 @@ Einstellungen → Geräte & Dienste → Integration hinzufügen → Benni Core S
 
 ## Entities
 
-Alle Entities hängen am Gerät **„Benni Core State"**; die Entity-IDs ergeben sich
-aus `has_entity_name` und tragen damit den neuen Domain-Prefix — **kollisionsfrei**
-zur Toolbox-Version (`sensor.benni_context_*`).
+Alle Entities hängen am Gerät **„<Profil> Core State"**; die Entity-IDs ergeben
+sich aus `has_entity_name` und tragen damit das **Profil im Slug** —
+kollisionsfrei zur Toolbox-Version (`sensor.benni_context_*`) **und** zwischen
+den Routen:
+
+* Route **Benni** → `sensor.benni_core_state_*`
+* Route **Eltern** → `sensor.eltern_core_state_*`
+
+Die folgende Tabelle zeigt die Route **Benni**:
 
 | Entity | Typ | Werte |
 | --- | --- | --- |
@@ -95,9 +101,13 @@ gepatcht und ein Refresh ausgelöst.
 
 ## Config-/Options-Flow
 
-* **Add-Flow** (zweistufig, single-instance): `user` (Quell-Entities) →
+* **Add-Flow** (dreistufig, single-instance): `user` (**Route/Profil**:
+  Benni · Eltern) → `entities` (Quell-Entities, profil-vorbefüllt) →
   `thresholds` (Radien & Zeitfenster).
 * **Options-Flow** als Menü: `entities` | `thresholds`.
+* Das gewählte Profil bestimmt (a) den Entity-Slug (`benni_`/`eltern_`),
+  (b) das Vorbefüll-Set und (c) das Panel-Label. Route **Eltern** ist heute
+  ohne Prefill (alle Slots leer) — wird befüllt, sobald die Eltern-Anlage real ist.
 
 Entity-Auswahl und Schwellwerte sind unverändert aus der Toolbox übernommen.
 
