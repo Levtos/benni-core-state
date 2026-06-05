@@ -150,6 +150,11 @@ PROFILE_PREFILL: dict[str, dict[str, str]] = {
         CONF_GPS_PRIMARY: "device_tracker.benni_iphone_icloud3",
         CONF_GPS_SECONDARY: "device_tracker.iphone_von_benjamin",
         CONF_WLAN_ELTERN_1: "binary_sensor.benni_bei_eltern_wlan",
+        # Proximity (Benjamin-spezifisch): Distanz in m + Richtung-Enum mit
+        # Wert "towards" (= was die Logik für Annäherung erwartet). Aktiviert
+        # Band/Preheat/Transition-nach-Distanz (in der Toolbox war das null).
+        CONF_PROXIMITY_DISTANCE: "sensor.home_entfernung_von_iphone_von_benjamin",
+        CONF_PROXIMITY_DIRECTION: "sensor.home_bewegung_von_iphone_von_benjamin",
         CONF_PC_ACTIVE: "binary_sensor.living_pc_plug_power_active_atomic",
         CONF_WAKE_NEEDED: "binary_sensor.wake_planner_benni_wake_needed",
         CONF_WAKE_NEXT: "sensor.wake_planner_benni_next_wake",

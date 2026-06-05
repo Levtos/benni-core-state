@@ -3,6 +3,16 @@
 Alle nennenswerten Änderungen an dieser Integration. Neuester Eintrag oben.
 Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
+## [0.4.1] – 2026-06-05
+
+### Added
+- **Proximity im Benni-Prefill**: `proximity_distance` →
+  `sensor.home_entfernung_von_iphone_von_benjamin` (m), `proximity_direction` →
+  `sensor.home_bewegung_von_iphone_von_benjamin` (Enum, Wert `towards` passt zur
+  Annäherungs-Logik). Aktiviert Presence-Band/Preheat/Transition-nach-Distanz
+  (war in der Toolbox `null` = schlummernd). Entity-IDs der Proximity-Integration
+  bewusst **nicht** umbenannt (Roh-Input, gekapselt; Rename-Risiko mid-migration).
+
 ## [0.4.0] – 2026-06-05
 
 ### Added
