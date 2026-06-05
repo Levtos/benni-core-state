@@ -24,6 +24,10 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 - README (Ist-Stand) und dieses CHANGELOG.
 
 ### Changed
+- Config-Flow: die `wlan_eltern_1`/`wlan_eltern_2`-Selektoren akzeptieren nun
+  zusätzlich `binary_sensor`/`input_boolean` (nicht nur `device_tracker`), damit
+  z.B. ein SSID-basierter Template-Sensor direkt als `bei_eltern`-Quelle dienen
+  kann. Keine Logikänderung — `_is_home()` wertet `on`/`true`/`home` ohnehin gleich.
 - Nur technische Verdrahtung: Umbrella-Abhängigkeiten entfernt
   (`...const`, `...storage`, `...services`, `..base`, Modul-Registry,
   Platform-Dispatcher). Eigene `const.py`-Helfer (`storage_key`, `unique_id`),

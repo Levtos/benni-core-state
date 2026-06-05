@@ -72,8 +72,12 @@ _ENTITY_SLOTS: tuple[tuple[str, list[str]], ...] = (
     (CONF_GPS_PRIMARY, ["device_tracker", "person"]),
     (CONF_GPS_SECONDARY, ["device_tracker", "person"]),
     (CONF_WLAN_BENNI, ["device_tracker"]),
-    (CONF_WLAN_ELTERN_1, ["device_tracker"]),
-    (CONF_WLAN_ELTERN_2, ["device_tracker"]),
+    # Eltern-Slots akzeptieren neben device_tracker auch binary_sensor /
+    # input_boolean: so kann z.B. ein SSID-basierter Template-Sensor
+    # ("on" wenn iPhone im Eltern-WLAN") direkt als bei_eltern-Quelle dienen.
+    # _is_home() in logic.py wertet "on"/"true"/"home" gleichwertig aus.
+    (CONF_WLAN_ELTERN_1, ["device_tracker", "binary_sensor", "input_boolean"]),
+    (CONF_WLAN_ELTERN_2, ["device_tracker", "binary_sensor", "input_boolean"]),
     (CONF_PROXIMITY_DISTANCE, ["sensor", "proximity"]),
     (CONF_PROXIMITY_DIRECTION, ["sensor", "proximity"]),
     # NB: wake_next / wake_needed werden hier nur als HA-Entities konfiguriert;
