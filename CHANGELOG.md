@@ -3,6 +3,20 @@
 Alle nennenswerten Änderungen an dieser Integration. Neuester Eintrag oben.
 Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
+## [0.4.0] – 2026-06-05
+
+### Added
+- **Auto-Bind der Quell-Entities** aus dem Profil-Map (Code): der Coordinator
+  löst jeden Input als `Override (entry) ▶ Profil-Map ▶ leer` auf
+  (`_entity_id`). Inputs binden ohne Klicken automatisch.
+
+### Changed
+- Der `entities`-Schritt ist jetzt eine **reine Override-Schicht**: es werden nur
+  Abweichungen vom Code-Default gespeichert (`_entity_overrides`). Leere/Default-
+  gleiche Felder fallen auf den Auto-Bind zurück → **Repo-Map-Updates propagieren**
+  auf nicht-überschriebene Slots. Options-Flow ebenso (Override-Diff statt
+  Vollkopie). Panel-Diagnose nutzt denselben Resolver.
+
 ## [0.3.0] – 2026-06-05
 
 ### Added

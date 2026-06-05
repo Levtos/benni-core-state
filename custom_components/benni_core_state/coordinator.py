@@ -67,6 +67,7 @@ from .const import (
     DEFAULT_TRANSITION_HOLD,
     DOMAIN,
     PERS_PARENTS,
+    PROFILE_PREFILL,
     STORAGE_VERSION,
     UPDATE_INTERVAL,
     storage_key,
@@ -104,6 +105,19 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
     @property
     def profile(self) -> str:
         return self.entry.data.get(CONF_PROFILE, DEFAULT_PROFILE)
+
+    def _entity_id(self, key: str) -> str | None:
+        """Auto-Bind: Override (options/data) gewinnt, sonst Profil-Map (Code).
+
+        So binden Inputs automatisch aus dem Profil-Map; nur echte Abweichungen
+        liegen im Config-Entry. Map-Updates aus dem Repo propagieren dadurch auf
+        alle Anlagen, die den Slot nicht überschrieben haben.
+        """
+        return (
+            self.entry.options.get(key)
+            or self.entry.data.get(key)
+            or PROFILE_PREFILL.get(self.profile, {}).get(key)
+        )
 
     @property
     def home_radius(self) -> float:
@@ -145,7 +159,7 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
         ]
         ids: list[str] = []
         for k in keys:
-            v = self._opt(k, None)
+            v = self._entity_id(k)
             if isinstance(v, str) and v:
                 ids.append(v)
         return ids
@@ -182,7 +196,7 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
     # ------------------------------------------------------------------ read
 
     def _read_entity(self, key: str) -> tuple[str | None, datetime | None, dict[str, Any]]:
-        eid = self._opt(key, None)
+        eid = self._entity_id(key)
         if not eid:
             return None, None, {}
         state = self.hass.states.get(eid)

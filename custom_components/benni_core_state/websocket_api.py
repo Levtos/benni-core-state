@@ -74,7 +74,7 @@ def _inputs(hass: HomeAssistant, coord) -> tuple[list[dict[str, Any]], dict[str,
     total = 0
     missing: list[str] = []
     for key, label in INPUT_SLOTS:
-        eid = coord._opt(key, None)
+        eid = coord._entity_id(key)
         if not eid:
             continue
         total += 1

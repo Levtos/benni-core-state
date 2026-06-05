@@ -130,6 +130,35 @@ def _thresholds_schema(defaults: dict[str, Any]) -> vol.Schema:
     })
 
 
+_ENTITY_SLOT_KEYS: tuple[str, ...] = tuple(key for key, _ in _ENTITY_SLOTS)
+
+
+def _entity_overrides(profile: str, user_input: dict[str, Any]) -> dict[str, Any]:
+    """Nur echte Abweichungen vom Profil-Map als Override speichern.
+
+    Leere Felder und Werte, die dem Code-Default entsprechen, werden NICHT
+    gespeichert → Map-Updates aus dem Repo propagieren weiter.
+    """
+    code = PROFILE_PREFILL.get(profile, {})
+    out: dict[str, Any] = {}
+    for key in _ENTITY_SLOT_KEYS:
+        v = user_input.get(key)
+        if v and v != code.get(key):
+            out[key] = v
+    return out
+
+
+def _override_or_map(profile: str, data: dict[str, Any]) -> dict[str, Any]:
+    """Anzeige-Defaults: gespeicherter Override sonst Profil-Map-Default."""
+    code = PROFILE_PREFILL.get(profile, {})
+    out: dict[str, Any] = {}
+    for key in _ENTITY_SLOT_KEYS:
+        v = data.get(key) or code.get(key)
+        if v:
+            out[key] = v
+    return out
+
+
 def _profile_schema(default: str) -> vol.Schema:
     return vol.Schema({
         vol.Required(CONF_PROFILE, default=default): selector.SelectSelector(
@@ -175,11 +204,14 @@ class BenniCoreStateConfigFlow(ConfigFlow, domain=DOMAIN):
         return await self.async_step_entities()
 
     async def async_step_entities(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        # Override-Step: vorbefüllt mit der Profil-Map (so sieht man die
+        # Auto-Bindung), aber gespeichert werden nur Abweichungen. Felder leer
+        # lassen = Auto-Bind aus Code übernehmen.
         if user_input is None:
             return self.async_show_form(
                 step_id="entities", data_schema=_entities_schema(self._prefill_defaults()),
             )
-        self._entities = {k: v for k, v in user_input.items() if v}
+        self._entities = _entity_overrides(self._profile, user_input)
         return await self.async_step_thresholds()
 
     async def async_step_thresholds(self, user_input: dict[str, Any] | None = None) -> FlowResult:
@@ -208,16 +240,22 @@ class BenniCoreStateOptionsFlow(OptionsFlow):
         )
 
     async def async_step_entities(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        profile = self.config_entry.data.get(CONF_PROFILE, DEFAULT_PROFILE)
         if user_input is not None:
-            new_data = {**self.config_entry.data, **{k: v for k, v in user_input.items() if v}}
-            # Selektoren, die geleert wurden, wieder entfernen.
-            for k, _ in _ENTITY_SLOTS:
-                if k in user_input and not user_input[k]:
-                    new_data.pop(k, None)
+            overrides = _entity_overrides(profile, user_input)
+            # Nicht-Entity-Daten (Profil etc.) erhalten, Entity-Slots durch
+            # Overrides ersetzen (leer/== Map → fällt auf Auto-Bind zurück).
+            new_data = {
+                k: v for k, v in self.config_entry.data.items()
+                if k not in _ENTITY_SLOT_KEYS
+            }
+            new_data.update(overrides)
+            new_data[CONF_PROFILE] = profile
             self.hass.config_entries.async_update_entry(self.config_entry, data=new_data)
             return self.async_create_entry(title="", data=dict(self.config_entry.options))
         return self.async_show_form(
-            step_id="entities", data_schema=_entities_schema(self.config_entry.data),
+            step_id="entities",
+            data_schema=_entities_schema(_override_or_map(profile, self.config_entry.data)),
         )
 
     async def async_step_thresholds(self, user_input: dict[str, Any] | None = None) -> FlowResult:

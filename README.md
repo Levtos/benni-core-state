@@ -109,6 +109,23 @@ gepatcht und ein Refresh ausgelöst.
   (b) das Vorbefüll-Set und (c) das Panel-Label. Route **Eltern** ist heute
   ohne Prefill (alle Slots leer) — wird befüllt, sobald die Eltern-Anlage real ist.
 
+### Quell-Bindung (Auto-Bind)
+
+Die Eingangs-Entities werden **automatisch aus dem Profil-Map** (`PROFILE_PREFILL`
+in `const.py`, Code) gebunden — der `entities`-Schritt ist nur eine **Override-
+Schicht**:
+
+```
+Auflösung je Slot:  Override (entry.data / später Custom-UX)  ▶  Profil-Map (Code)  ▶  leer
+```
+
+* Im `entities`-Schritt werden nur **Abweichungen** vom Code-Default gespeichert.
+  Felder leer lassen = Auto-Bind aus Code übernehmen.
+* Dadurch **propagieren Map-Updates aus dem Repo** auf alle Anlagen, die den Slot
+  nicht überschrieben haben (config-as-code statt 18 Dropdowns klicken).
+* Ein späteres Custom-UX schreibt seine Änderungen ebenfalls als Override in
+  `entry.data` — der Code-Map bleibt der Default, kein Bruch.
+
 Entity-Auswahl und Schwellwerte sind unverändert aus der Toolbox übernommen.
 
 ### Schwellwerte (Defaults / Range)
