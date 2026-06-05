@@ -1,0 +1,13 @@
+{
+  "domain": "benni_core_state",
+  "name": "Benni Core State",
+  "version": "0.1.0",
+  "documentation": "https://github.com/Levtos/benni-core-state",
+  "issue_tracker": "https://github.com/Levtos/benni-core-state/issues",
+  "codeowners": ["@Levtos"],
+  "config_flow": true,
+  "iot_class": "local_push",
+  "integration_type": "service",
+  "dependencies": [],
+  "requirements": []
+}
