@@ -40,6 +40,7 @@ CONF_PRIVATE_SOURCE = "private_source"
 CONF_HOMEOFFICE_PING = "homeoffice_ping"
 CONF_HOLIDAY_SENSOR = "holiday_sensor"
 CONF_HOUSEHOLD_SOURCE = "household_source"
+CONF_SOLAR_NOON = "solar_noon"
 
 # Numeric thresholds (options flow)
 CONF_HOME_RADIUS = "home_radius"
@@ -159,6 +160,7 @@ PROFILE_PREFILL: dict[str, dict[str, str]] = {
         CONF_WAKE_NEEDED: "binary_sensor.wake_planner_benni_wake_needed",
         CONF_WAKE_NEXT: "sensor.wake_planner_benni_next_wake",
         CONF_MEDIA_CONTEXT: "sensor.benni_media_context_media_context",
+        CONF_SOLAR_NOON: "sensor.system_sun2_solar_noon",
     },
     PROFILE_ELTERN: {},
 }

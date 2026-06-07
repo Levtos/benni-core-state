@@ -385,23 +385,106 @@ def compute_bio_state(
 # --------------------------------------------------------- day_state / context
 
 
-def compute_day_state(local_now: datetime) -> str:
-    h = local_now.hour
-    if 5 <= h < 8:
-        return DAY_EARLY_MORNING
-    if 8 <= h < 10:
-        return DAY_LATE_MORNING
-    if 10 <= h < 12:
-        return DAY_FORENOON
-    if 12 <= h < 17:
-        return DAY_AFTERNOON
-    if 17 <= h < 19:
-        return DAY_EARLY_EVENING
-    if 19 <= h < 22:
-        return DAY_LATE_EVENING
-    if h >= 22 or h < 1:
-        return DAY_EARLY_NIGHT
-    return DAY_LATE_NIGHT  # 1 <= h < 5
+DAY_PHASE_ORDER = (
+    DAY_EARLY_MORNING,
+    DAY_LATE_MORNING,
+    DAY_FORENOON,
+    DAY_AFTERNOON,
+    DAY_EARLY_EVENING,
+    DAY_LATE_EVENING,
+    DAY_EARLY_NIGHT,
+    DAY_LATE_NIGHT,
+)
+
+_MORNING_SPLITS = {
+    1: 0.55, 2: 0.52, 3: 0.47, 4: 0.42, 5: 0.35, 6: 0.30,
+    7: 0.30, 8: 0.35, 9: 0.40, 10: 0.45, 11: 0.50, 12: 0.55,
+}
+_EVENING_SPLITS = {
+    1: 0.30, 2: 0.33, 3: 0.38, 4: 0.43, 5: 0.52, 6: 0.60,
+    7: 0.60, 8: 0.55, 9: 0.48, 10: 0.40, 11: 0.33, 12: 0.30,
+}
+
+
+def _same_local_day(anchor: datetime, source: datetime) -> datetime:
+    return anchor.replace(
+        hour=source.hour,
+        minute=source.minute,
+        second=source.second,
+        microsecond=source.microsecond,
+    )
+
+
+def _today_at(anchor: datetime, value: str) -> datetime:
+    hour, minute = (int(part) for part in value.split(":", maxsplit=1))
+    return anchor.replace(hour=hour, minute=minute, second=0, microsecond=0)
+
+
+def _seasonal_offset_seconds(anchor: datetime) -> int:
+    doy = anchor.timetuple().tm_yday
+    dist = doy - 172
+    if dist > 183:
+        dist -= 365
+    if dist < -182:
+        dist += 365
+    seasonal_factor = max(-1.0, min(1.0, 1.0 - abs(dist) / 91.5))
+    return int(15 * 60 * seasonal_factor)
+
+
+def compute_day_phase_starts(
+    local_now: datetime, solar_noon: datetime | None = None
+) -> dict[str, datetime]:
+    """Return dynamic local phase start times for the date of ``local_now``.
+
+    The shape follows the former ``Lights Dayphase`` YAML: fixed dawn/night
+    anchors get a seasonal offset, while forenoon/afternoon/evening are based
+    on solar noon. Unlike the old YAML, the late-night split is evaluated
+    continuously across midnight instead of forcing a midnight state change.
+    """
+    seasonal_offset = timedelta(seconds=_seasonal_offset_seconds(local_now))
+    morning_fix = _today_at(local_now, "04:13") - seasonal_offset
+    night_fix = _today_at(local_now, "23:18") + seasonal_offset
+
+    noon = (
+        _same_local_day(local_now, solar_noon)
+        if solar_noon is not None
+        else _today_at(local_now, "12:46")
+    )
+    midday_start = noon - timedelta(hours=3)
+    evening_start = noon + timedelta(hours=4)
+
+    month = local_now.month
+    span_morning = midday_start - morning_fix
+    span_evening = night_fix - evening_start
+    span_night = (morning_fix + timedelta(days=1)) - night_fix
+
+    return {
+        DAY_EARLY_MORNING: morning_fix,
+        DAY_LATE_MORNING: morning_fix + span_morning * _MORNING_SPLITS[month],
+        DAY_FORENOON: midday_start,
+        DAY_AFTERNOON: noon,
+        DAY_EARLY_EVENING: evening_start,
+        DAY_LATE_EVENING: evening_start + span_evening * _EVENING_SPLITS[month],
+        DAY_EARLY_NIGHT: night_fix,
+        DAY_LATE_NIGHT: night_fix + span_night * 0.45,
+    }
+
+
+def compute_day_state(local_now: datetime, solar_noon: datetime | None = None) -> str:
+    starts = compute_day_phase_starts(local_now, solar_noon)
+    if local_now < starts[DAY_EARLY_MORNING]:
+        yesterday = local_now - timedelta(days=1)
+        y_solar_noon = solar_noon - timedelta(days=1) if solar_noon else None
+        y_starts = compute_day_phase_starts(yesterday, y_solar_noon)
+        if local_now < y_starts[DAY_LATE_NIGHT]:
+            return DAY_EARLY_NIGHT
+        return DAY_LATE_NIGHT
+
+    current = DAY_LATE_NIGHT
+    for phase in DAY_PHASE_ORDER:
+        if local_now >= starts[phase]:
+            current = phase
+    return current
 
 
 def compute_day_context(local_now: datetime, holiday: bool) -> str:

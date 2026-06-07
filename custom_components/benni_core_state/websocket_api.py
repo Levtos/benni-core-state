@@ -28,6 +28,7 @@ from .const import (
     CONF_PROXIMITY_DIRECTION,
     CONF_PROXIMITY_DISTANCE,
     CONF_PS5_ACTIVE,
+    CONF_SOLAR_NOON,
     CONF_WAKE_NEEDED,
     CONF_WAKE_NEXT,
     CONF_WLAN_BENNI,
@@ -58,6 +59,7 @@ INPUT_SLOTS: tuple[tuple[str, str], ...] = (
     (CONF_HOMEOFFICE_PING, "Homeoffice"),
     (CONF_HOLIDAY_SENSOR, "Feiertag"),
     (CONF_HOUSEHOLD_SOURCE, "Haushalt belegt"),
+    (CONF_SOLAR_NOON, "Solar Noon"),
 )
 
 _UNAVAILABLE = ("unknown", "unavailable", "", None)

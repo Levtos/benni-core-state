@@ -15,7 +15,7 @@ from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
     BinarySensorEntity,
 )
-from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
@@ -61,7 +61,7 @@ SENSORS: tuple[_Desc, ...] = (
     _Desc("bio_state", "Bio State",
           BIO_STATES, lambda s: s.bio_state, "bio_state"),
     _Desc("day_state", "Day State",
-          DAY_STATES, lambda s: s.day_state),
+          DAY_STATES, lambda s: s.day_state, "day_state"),
     _Desc("day_context", "Day Context",
           DAY_CONTEXT_STATES, lambda s: s.day_context),
     _Desc("activity_state", "Activity State",
@@ -113,7 +113,7 @@ class BenniCoreStateSensor(CoordinatorEntity[BenniCoreStateCoordinator], SensorE
         self._attr_unique_id = unique_id(entry.entry_id, desc.key)
         self._attr_device_info = _device_info(entry)
         if desc.options:
-            self._attr_device_class = "enum"
+            self._attr_device_class = SensorDeviceClass.ENUM
             self._attr_options = desc.options
 
     @property

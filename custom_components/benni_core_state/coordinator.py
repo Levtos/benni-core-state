@@ -49,6 +49,7 @@ from .const import (
     CONF_PROXIMITY_DIRECTION,
     CONF_PROXIMITY_DISTANCE,
     CONF_PS5_ACTIVE,
+    CONF_SOLAR_NOON,
     CONF_TRACKER_FRESHNESS,
     CONF_TRANSITION_HOLD,
     CONF_WAKE_NEEDED,
@@ -155,7 +156,7 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
             CONF_WAKE_NEXT, CONF_WAKE_NEEDED,
             CONF_PC_ACTIVE, CONF_PS5_ACTIVE, CONF_COFFEE_ACTIVE, CONF_DOOR_WAKE,
             CONF_MEDIA_CONTEXT, CONF_PRIVATE_SOURCE, CONF_HOMEOFFICE_PING,
-            CONF_HOLIDAY_SENSOR, CONF_HOUSEHOLD_SOURCE,
+            CONF_HOLIDAY_SENSOR, CONF_HOUSEHOLD_SOURCE, CONF_SOLAR_NOON,
         ]
         ids: list[str] = []
         for k in keys:
@@ -292,7 +293,19 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
             "homeoffice": self._read_bool(CONF_HOMEOFFICE_PING),
         }
         local_now = dt_util.as_local(now)
-        day_state = logic.compute_day_state(local_now)
+        solar_noon_raw, _, _ = self._read_entity(CONF_SOLAR_NOON)
+        solar_noon = _parse_local_datetime(solar_noon_raw, local_now)
+        solar_noon_source = self._entity_id(CONF_SOLAR_NOON) if solar_noon else None
+        if solar_noon is None:
+            sun = self.hass.states.get("sun.sun")
+            if sun is not None:
+                solar_noon = _parse_local_datetime(
+                    sun.attributes.get("next_noon"), local_now
+                )
+                if solar_noon is not None:
+                    solar_noon_source = "sun.sun.next_noon"
+        day_state = logic.compute_day_state(local_now, solar_noon)
+        day_phase_starts = logic.compute_day_phase_starts(local_now, solar_noon)
         new_bio, sleep_start, awake_start = logic.compute_bio_state(
             prev_state=self._persistent.bio_state,
             wake_needed=wake_needed,
@@ -365,6 +378,14 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
                 "wake_next": wake_next_raw,
                 **{f"indicator_{k}": v for k, v in wake_indicators.items()},
             },
+            "day_state": {
+                "solar_noon": solar_noon.isoformat() if solar_noon else None,
+                "phase_starts": {
+                    phase: day_phase_starts[phase].strftime("%H:%M:%S")
+                    for phase in logic.DAY_PHASE_ORDER
+                },
+                "source": solar_noon_source or "fallback",
+            },
             "activity_state": {
                 "media_context": media_ctx,
                 "homeoffice": homeoffice,
@@ -406,6 +427,31 @@ def _parse_iso(raw: str | None) -> datetime | None:
         return dt_util.parse_datetime(raw)
     except Exception:  # noqa: BLE001
         return None
+
+
+def _parse_local_datetime(raw: Any, local_now: datetime) -> datetime | None:
+    if raw in (None, "unknown", "unavailable", ""):
+        return None
+    if isinstance(raw, datetime):
+        parsed = raw
+    else:
+        parsed = dt_util.parse_datetime(str(raw))
+        if parsed is None:
+            for fmt in ("%H:%M:%S", "%H:%M"):
+                try:
+                    parsed_time = datetime.strptime(str(raw), fmt).time()
+                except ValueError:
+                    continue
+                return local_now.replace(
+                    hour=parsed_time.hour,
+                    minute=parsed_time.minute,
+                    second=parsed_time.second,
+                    microsecond=0,
+                )
+            return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=local_now.tzinfo)
+    return dt_util.as_local(parsed)
 
 
 # ----------------------------------------------------------------- lookups

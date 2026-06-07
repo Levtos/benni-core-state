@@ -42,6 +42,7 @@ from .const import (
     CONF_PROXIMITY_DIRECTION,
     CONF_PROXIMITY_DISTANCE,
     CONF_PS5_ACTIVE,
+    CONF_SOLAR_NOON,
     CONF_TRACKER_FRESHNESS,
     CONF_TRANSITION_HOLD,
     CONF_WAKE_NEEDED,
@@ -99,6 +100,7 @@ _ENTITY_SLOTS: tuple[tuple[str, list[str]], ...] = (
     (CONF_HOMEOFFICE_PING, ["binary_sensor", "input_boolean"]),
     (CONF_HOLIDAY_SENSOR, ["binary_sensor", "calendar", "input_boolean"]),
     (CONF_HOUSEHOLD_SOURCE, ["binary_sensor", "input_boolean"]),
+    (CONF_SOLAR_NOON, ["sensor"]),
 )
 
 
