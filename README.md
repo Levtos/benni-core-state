@@ -6,10 +6,10 @@ und ein **Master-Context**. Statt YAML-Template-Spaghetti gibt es einen einzigen
 testbaren Coordinator mit Enum-Sensoren, Attributen, Hysterese, Freshness-Checks
 und Restore-on-Restart.
 
-> **Ist-Stand-Dokumentation.** Diese README beschreibt den **aktuell extrahierten
-> Stand**, nicht das spätere Zielbild. Die fachliche Fusion mit *Day State*,
-> *Day Context* und *Context State* zu einem echten „Core State" folgt als
-> separater Auftrag.
+> **Ist-Stand-Dokumentation.** Diese README beschreibt den **aktuellen Stand**:
+> Presence, Bio und Activity stammen aus der extrahierten Toolbox-Logik; der
+> Day-State wurde inzwischen mit dynamischen Phasengrenzen nach dem früheren
+> `Lights Dayphase`-Modell erweitert.
 
 ## Herkunft: Extraktion aus Bennis Toolbox
 
@@ -17,8 +17,10 @@ und Restore-on-Restart.
 `benni_context` aus der Umbrella-Integration **Bennis Toolbox**
 (`custom_components/bennis_toolbox/modules/benni_context/`).
 
-* Die **Fachlogik wurde unverändert** übernommen (`logic.py`, `models.py` sind
-  ein 1:1-Lift; die Compute-Regeln sind dieselben).
+* Die Presence-/Bio-/Activity-Regeln wurden konservativ übernommen (`logic.py`,
+  `models.py` bleiben reine, testbare Compute-Module).
+* Der **Day-State** nutzt dynamische Phasengrenzen: saisonaler Morgen-/Nacht-
+  Versatz, Solar-Noon-Anker und monatliche Morgen-/Abend-Splits.
 * Geändert wurde **nur die technische Verdrahtung**: eigene HA-Domain, eigener
   Config-/Options-Flow (statt Umbrella-Modulauswahl), eigene Services, eigene
   Storage-Keys, eigene `unique_id`/Entity-Namespaces.
@@ -59,7 +61,7 @@ Die folgende Tabelle zeigt die Route **Benni**:
 | `sensor.benni_core_state_presence_transition` | enum | `none`, `coming_home`, `leaving_home`, `passing_through` |
 | `binary_sensor.benni_core_state_presence_preheat_active` | running | on / off |
 | `sensor.benni_core_state_bio_state` | enum | `sleep`, `waking`, `awake` |
-| `sensor.benni_core_state_day_state` | enum | `early_morning` … `late_night` (8 Phasen) |
+| `sensor.benni_core_state_day_state` | enum | `early_morning` … `late_night` (8 dynamische Phasen) |
 | `sensor.benni_core_state_day_context` | enum | `werktag`, `wochenende`, `frei` |
 | `sensor.benni_core_state_activity_state` | enum | `sleep`, `waking`, `idle`, `free_time`, `work_home`, `work_away`, `private_time`, `household` |
 | `sensor.benni_core_state_master_context` | string | komposit `presence.bio.day_state.day_context.activity` |
@@ -85,6 +87,10 @@ statt auf `unavailable` zu gehen.
 * **Bio-State** ist die einzige Wahrheit für sleep/waking/awake. PC/PS5/Kaffee/Tür
   sind Wake-Indizien (nur in Nicht-Nacht-Phasen wirksam), `wake_needed` nudgt nur
   `sleep → waking`.
+* **Day-State** folgt dynamischen Phasengrenzen. Route Benni bindet
+  `sensor.system_sun2_solar_noon` automatisch; falls dieser Sensor fehlt oder
+  unavailable ist, fällt die Integration auf `sun.sun.next_noon` und danach auf
+  einen festen Mittagsanker zurück.
 * **Activity** bleibt klein; `sleep`/`waking` spiegeln den Bio-State, TV/Gaming
   etc. sind Media-Kontext (Attribut), kein Activity-Hauptstate.
 
@@ -126,7 +132,8 @@ Auflösung je Slot:  Override (entry.data / später Custom-UX)  ▶  Profil-Map 
 * Ein späteres Custom-UX schreibt seine Änderungen ebenfalls als Override in
   `entry.data` — der Code-Map bleibt der Default, kein Bruch.
 
-Entity-Auswahl und Schwellwerte sind unverändert aus der Toolbox übernommen.
+Entity-Auswahl und Schwellwerte folgen dem Toolbox-Muster; zusätzlich gibt es
+einen optionalen `solar_noon`-Slot für dynamische Tagesphasen.
 
 ### Schwellwerte (Defaults / Range)
 
@@ -162,7 +169,7 @@ alten Toolbox-Storage vorgesehen — die neue Instanz startet mit eigenem Storag
 
 Push-getrieben über State-Change-Listener auf allen konfigurierten Input-Entities.
 Zusätzlich tickt der Coordinator alle 30 s (`UPDATE_INTERVAL`), um zeitabhängige
-States (day_state, Freshness, Preheat-Ablauf) aktuell zu halten.
+States (dynamischer day_state, Freshness, Preheat-Ablauf) aktuell zu halten.
 
 ## Shadow-Modus
 

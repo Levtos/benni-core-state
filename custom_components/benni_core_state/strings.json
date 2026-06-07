@@ -30,7 +30,8 @@
           "private_source": "Private mode source",
           "homeoffice_ping": "Homeoffice ping",
           "holiday_sensor": "Holiday / vacation",
-          "household_source": "Household occupancy (guests etc.)"
+          "household_source": "Household occupancy (guests etc.)",
+          "solar_noon": "Solar noon source"
         }
       },
       "thresholds": {
@@ -79,7 +80,8 @@
           "private_source": "Private mode source",
           "homeoffice_ping": "Homeoffice ping",
           "holiday_sensor": "Holiday / vacation",
-          "household_source": "Household occupancy"
+          "household_source": "Household occupancy",
+          "solar_noon": "Solar noon source"
         }
       },
       "thresholds": {
