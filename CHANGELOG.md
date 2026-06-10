@@ -3,6 +3,17 @@
 Alle nennenswerten Änderungen an dieser Integration. Neuester Eintrag oben.
 Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
+## [0.4.2] – 2026-06-10
+
+### Changed
+- **FLEET-36 Cut-over (Schritt 1):** `PROFILE_PREFILL[benni]` für den
+  Media-Context-Input zeigt auf den extrahierten L1-Feeder
+  `sensor.benni_media_state_media_context` (statt Toolbox
+  `sensor.benni_media_context_media_context`). Dank Override-only-Storage
+  binden Live-Instanzen ohne expliziten Override nach Reload automatisch um
+  (Strangler, per-Konsument). `eltern` bleibt leer (später
+  `eltern_media_state_*`).
+
 ## [0.4.1] – 2026-06-05
 
 ### Added

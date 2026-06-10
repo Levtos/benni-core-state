@@ -159,7 +159,9 @@ PROFILE_PREFILL: dict[str, dict[str, str]] = {
         CONF_PC_ACTIVE: "binary_sensor.living_pc_plug_power_active_atomic",
         CONF_WAKE_NEEDED: "binary_sensor.wake_planner_benni_wake_needed",
         CONF_WAKE_NEXT: "sensor.wake_planner_benni_next_wake",
-        CONF_MEDIA_CONTEXT: "sensor.benni_media_context_media_context",
+        # FLEET-36 Cut-over: vom Toolbox-Modul benni_media_context auf den
+        # extrahierten L1-Feeder benni_media_state (profil-getriebener Slug).
+        CONF_MEDIA_CONTEXT: "sensor.benni_media_state_media_context",
         CONF_SOLAR_NOON: "sensor.system_sun2_solar_noon",
     },
     PROFILE_ELTERN: {},
