@@ -91,9 +91,12 @@ _ENTITY_SLOTS: tuple[tuple[str, list[str]], ...] = (
     # als Inputs, ohne Wake-Planner-Code zu importieren.
     (CONF_WAKE_NEXT, ["sensor", "input_datetime"]),
     (CONF_WAKE_NEEDED, ["binary_sensor", "input_boolean"]),
-    (CONF_PC_ACTIVE, ["binary_sensor", "switch", "input_boolean"]),
-    (CONF_PS5_ACTIVE, ["binary_sensor", "switch", "input_boolean"]),
-    (CONF_COFFEE_ACTIVE, ["binary_sensor", "switch", "input_boolean"]),
+    # core_devices liefert die Geräte-Wahrheit als `sensor.benni_device_*`
+    # (on/off-State) → `sensor` muss als Domain wählbar sein, sonst filtert der
+    # Flow die richtige Entität raus (FLEET: PC-Wake-Fehlbindung 2026-06-12).
+    (CONF_PC_ACTIVE, ["binary_sensor", "sensor", "switch", "input_boolean"]),
+    (CONF_PS5_ACTIVE, ["binary_sensor", "sensor", "switch", "input_boolean"]),
+    (CONF_COFFEE_ACTIVE, ["binary_sensor", "sensor", "switch", "input_boolean"]),
     (CONF_DOOR_WAKE, ["binary_sensor", "input_boolean"]),
     (CONF_MEDIA_CONTEXT, ["sensor", "input_select"]),
     (CONF_PRIVATE_SOURCE, ["binary_sensor", "input_boolean"]),
