@@ -13,7 +13,9 @@ from custom_components.benni_core_state.const import (
     BIO_SLEEP,
     BIO_WAKING,
     DAY_AFTERNOON,
+    DAY_EARLY_MORNING,
     DAY_EARLY_NIGHT,
+    DAY_LATE_MORNING,
     PERS_AWAY,
     PERS_HOME,
 )
@@ -111,6 +113,76 @@ def test_wake_needed_still_works_at_night():
     """wake_needed ist nicht day-state-gegated und nudgt auch nachts zu waking."""
     state, _, _ = _bio(BIO_SLEEP, wake_needed=True, day_state=DAY_EARLY_NIGHT)
     assert state == BIO_WAKING
+
+
+def test_early_morning_indicator_does_not_break_sleep_without_wake_needed():
+    """Nacht-Schutz: ~04:00 öffnet early_morning das Fenster, aber ohne
+    wake_needed darf ein (frisch aktiver) Kaffee/PC den Schlaf NICHT beenden.
+    Reproduziert den realen Falsch-Awake der letzten Nächte."""
+    sleep_start = NOW - timedelta(hours=4)
+    state, _, _ = _bio(
+        BIO_SLEEP,
+        indicators={**NO_IND, "coffee": True},
+        day_state=DAY_EARLY_MORNING,
+        prev_sleep_start=sleep_start,
+        indicator_active_since={
+            **{key: None for key in NO_IND},
+            # frisch (nach Schlafbeginn aktiv) — würde sonst wecken
+            "coffee": NOW - timedelta(minutes=1),
+        },
+    )
+    assert state == BIO_SLEEP
+
+
+def test_late_morning_indicator_gated_without_wake_needed():
+    """Auch late_morning (Phasenstart ~06:00) bleibt vor wake_needed geschützt —
+    sonst weckt es um 06:00 statt zur geplanten Zeit (~09:30)."""
+    state, _, _ = _bio(
+        BIO_SLEEP,
+        indicators={**NO_IND, "pc": True},
+        day_state=DAY_LATE_MORNING,
+        prev_sleep_start=NOW - timedelta(hours=4),
+        indicator_active_since={
+            **{key: None for key in NO_IND},
+            "pc": NOW - timedelta(minutes=1),
+        },
+    )
+    assert state == BIO_SLEEP
+
+
+def test_early_morning_indicator_breaks_sleep_when_wake_needed():
+    """Sobald der Wake Planner wecken will, bestätigt ein Indikator das Aufwachen
+    auch in den frühen Phasen normal."""
+    state, _, awake_ts = _bio(
+        BIO_SLEEP,
+        wake_needed=True,
+        indicators={**NO_IND, "coffee": True},
+        day_state=DAY_EARLY_MORNING,
+        prev_sleep_start=NOW - timedelta(hours=4),
+        indicator_active_since={
+            **{key: None for key in NO_IND},
+            "coffee": NOW - timedelta(minutes=1),
+        },
+    )
+    assert state == BIO_AWAKE
+    assert awake_ts == NOW
+
+
+def test_waking_to_awake_unaffected_by_early_phase_gate():
+    """Das Nacht-Gating betrifft nur den sleep-Pfad; die waking→awake-Bestätigung
+    durch einen Indikator bleibt auch in early_morning ohne wake_needed erhalten."""
+    state, _, awake_ts = _bio(
+        BIO_WAKING,
+        indicators={**NO_IND, "coffee": True},
+        day_state=DAY_EARLY_MORNING,
+        prev_sleep_start=NOW - timedelta(hours=4),
+        indicator_active_since={
+            **{key: None for key in NO_IND},
+            "coffee": NOW - timedelta(minutes=1),
+        },
+    )
+    assert state == BIO_AWAKE
+    assert awake_ts == NOW
 
 
 def test_leaving_home_while_sleeping_forces_awake():

@@ -316,6 +316,14 @@ _WAKE_ALLOWED_DAY_STATES = (
     DAY_EARLY_EVENING,
     DAY_LATE_EVENING,
 )
+# Frühe Tagphasen, die zeitlich noch in den realen Schlaf hineinragen: hier
+# beginnt ``early_morning`` (Sommer) schon gegen 04:00, lange vor der geplanten
+# Weckzeit. In diesen Phasen darf ein Aktivitäts-Indikator den **Schlaf** nur
+# beenden, wenn der Wake Planner tatsächlich wecken will (``wake_needed``) —
+# sonst kippen Kaffee-Standby oder flappende Geräte-Sensoren den Zustand
+# fälschlich auf ``awake``. Die Wach-Bestätigung aus ``waking`` bleibt hiervon
+# unberührt.
+_EARLY_WAKE_PHASES = (DAY_EARLY_MORNING, DAY_LATE_MORNING)
 
 
 def wake_indicators_allowed(day_state: str | None) -> bool:
@@ -371,6 +379,11 @@ def compute_bio_state(
     * ``sleep``/``waking`` → ``awake`` when an allowed wake indicator fires
       in a non-night day state. Coffee/door are strong indicators; PC/PS5 are
       explicit wake indicators too. TV is intentionally not an input.
+      Exception (night protection): in the early phases ``early_morning`` /
+      ``late_morning`` an indicator may only break **sleep** when
+      ``wake_needed`` is set — these phases start ~04:00 in summer, well before
+      the planned wake, so coffee-standby / flapping device sensors must not
+      end sleep there. The ``waking`` → ``awake`` confirmation is unaffected.
     * ``waking`` remains a Wake-Up-module transition state; the Wake Planner
       alone never confirms awake.
     * Leaving home while not asleep → awake (you can't physically leave while
@@ -399,7 +412,16 @@ def compute_bio_state(
         return BIO_AWAKE, sleep_start, now
 
     if prev_state == BIO_SLEEP:
-        if activity_wake:
+        # Nacht-Schutz: in den frühen Tagphasen (early/late_morning) darf ein
+        # Aktivitäts-Indikator den Schlaf nur beenden, wenn der Wake Planner
+        # wecken will. Verhindert das Falsch-Awake um ~04:00, sobald
+        # ``early_morning`` das Indikator-Fenster öffnet. Fail-safe: im
+        # Zweifel bleibt es ``sleep``; der Planner (→ ``waking``) und manuelles
+        # ``mark_awake`` wecken weiterhin.
+        sleep_break_allowed = activity_wake and (
+            wake_needed or day_state not in _EARLY_WAKE_PHASES
+        )
+        if sleep_break_allowed:
             return BIO_AWAKE, sleep_start, now
         if wake_needed:
             return BIO_WAKING, sleep_start, awake_start
