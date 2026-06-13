@@ -308,7 +308,6 @@ def compute_preheat(
 
 _STRONG_INDICATORS = ("coffee", "door")
 _SOFT_INDICATORS = ("pc", "ps5")
-_ACTIVITY_WAKE_MIN_SLEEP = timedelta(hours=4)
 _WAKE_ALLOWED_DAY_STATES = (
     DAY_EARLY_MORNING,
     DAY_LATE_MORNING,
@@ -329,18 +328,27 @@ def wake_indicators_allowed(day_state: str | None) -> bool:
     return day_state in _WAKE_ALLOWED_DAY_STATES
 
 
-def _activity_wake_grace_active(
-    prev_sleep_start: datetime | None, now: datetime
+def _indicator_can_wake(
+    key: str,
+    indicators: dict[str, bool],
+    indicator_active_since: dict[str, datetime | None] | None,
+    prev_sleep_start: datetime | None,
 ) -> bool:
-    """Suppress level-based wake indicators right after manual sleep.
+    """Return whether an active indicator is fresh enough to wake from sleep.
 
-    ``mark_sleep`` writes ``last_sleep_start`` before the next coordinator
-    refresh. Without a grace window, already-active PC/coffee signals can
-    immediately undo the explicit sleep request in the same refresh.
+    A manual sleep request should not be undone by stale level-style sensors
+    that were already active before sleep started. Once such a source cycles
+    off and on again, its ``last_changed`` moves behind ``last_sleep_start``
+    and it is allowed to wake normally.
     """
-    if prev_sleep_start is None:
+    if not indicators.get(key):
         return False
-    return now - prev_sleep_start < _ACTIVITY_WAKE_MIN_SLEEP
+    if prev_sleep_start is None or indicator_active_since is None:
+        return True
+    active_since = indicator_active_since.get(key)
+    if active_since is None:
+        return True
+    return active_since > prev_sleep_start
 
 
 def compute_bio_state(
@@ -353,6 +361,7 @@ def compute_bio_state(
     now: datetime,
     prev_sleep_start: datetime | None,
     prev_awake_start: datetime | None,
+    indicator_active_since: dict[str, datetime | None] | None = None,
 ) -> tuple[str, datetime | None, datetime | None]:
     """Bio is the single source of truth for sleep/waking/awake.
 
@@ -372,11 +381,16 @@ def compute_bio_state(
     sleep_start = prev_sleep_start
     awake_start = prev_awake_start
 
-    strong = any(indicators.get(k) for k in _STRONG_INDICATORS)
-    soft = any(indicators.get(k) for k in _SOFT_INDICATORS)
+    strong = any(
+        _indicator_can_wake(k, indicators, indicator_active_since, prev_sleep_start)
+        for k in _STRONG_INDICATORS
+    )
+    soft = any(
+        _indicator_can_wake(k, indicators, indicator_active_since, prev_sleep_start)
+        for k in _SOFT_INDICATORS
+    )
     activity_wake = (
         wake_indicators_allowed(day_state)
-        and not _activity_wake_grace_active(prev_sleep_start, now)
         and (strong or soft)
     )
 
