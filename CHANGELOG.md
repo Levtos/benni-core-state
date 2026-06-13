@@ -3,6 +3,14 @@
 Alle nennenswerten Änderungen an dieser Integration. Neuester Eintrag oben.
 Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
+## [0.4.5] – 2026-06-13
+
+### Fixed
+- Der manuelle Schlafmodus ignoriert nur noch Wake-Indikatoren, die bereits
+  vor `last_sleep_start` aktiv waren. Frisch nach Sleep aktiv werdende
+  PC-/Kaffee-/Tür-/PS5-Signale können weiterhin wecken; kein pauschales
+  Zeitfenster mehr.
+
 ## [0.4.4] – 2026-06-13
 
 ### Fixed

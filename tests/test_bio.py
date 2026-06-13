@@ -69,14 +69,34 @@ def test_pc_from_sleep_promotes_to_awake_in_allowed_phase():
     assert awake_ts == NOW
 
 
-def test_fresh_manual_sleep_ignores_existing_wake_indicators():
+def test_manual_sleep_ignores_wake_indicators_already_active_before_sleep():
     """mark_sleep must not be undone by stale level-based PC/coffee signals."""
     state, _, _ = _bio(
         BIO_SLEEP,
         indicators={**NO_IND, "pc": True, "coffee": True},
         prev_sleep_start=NOW,
+        indicator_active_since={
+            **{key: None for key in NO_IND},
+            "pc": NOW - timedelta(minutes=10),
+            "coffee": NOW - timedelta(minutes=10),
+        },
     )
     assert state == BIO_SLEEP
+
+
+def test_indicator_that_turns_on_after_sleep_can_wake():
+    sleep_start = NOW - timedelta(minutes=5)
+    state, _, awake_ts = _bio(
+        BIO_SLEEP,
+        indicators={**NO_IND, "coffee": True},
+        prev_sleep_start=sleep_start,
+        indicator_active_since={
+            **{key: None for key in NO_IND},
+            "coffee": NOW - timedelta(minutes=1),
+        },
+    )
+    assert state == BIO_AWAKE
+    assert awake_ts == NOW
 
 
 def test_wake_indicators_suppressed_at_night():

@@ -285,13 +285,24 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
 
         wake_needed = self._read_bool(CONF_WAKE_NEEDED)
         wake_next_raw, _, _ = self._read_entity(CONF_WAKE_NEXT)
-        wake_indicators = {
-            "pc": self._read_bool(CONF_PC_ACTIVE),
-            "ps5": self._read_bool(CONF_PS5_ACTIVE),
-            "coffee": self._read_bool(CONF_COFFEE_ACTIVE),
-            "door": self._read_bool(CONF_DOOR_WAKE),
-            "homeoffice": self._read_bool(CONF_HOMEOFFICE_PING),
+        wake_indicator_sources = {
+            "pc": CONF_PC_ACTIVE,
+            "ps5": CONF_PS5_ACTIVE,
+            "coffee": CONF_COFFEE_ACTIVE,
+            "door": CONF_DOOR_WAKE,
+            "homeoffice": CONF_HOMEOFFICE_PING,
         }
+        wake_indicators = {
+            key: self._read_bool(conf)
+            for key, conf in wake_indicator_sources.items()
+        }
+        wake_indicator_active_since = {}
+        for key, conf in wake_indicator_sources.items():
+            entity_id = self._entity_id(conf)
+            state = self.hass.states.get(entity_id) if entity_id else None
+            wake_indicator_active_since[key] = (
+                state.last_changed if wake_indicators[key] and state is not None else None
+            )
         local_now = dt_util.as_local(now)
         solar_noon_raw, _, _ = self._read_entity(CONF_SOLAR_NOON)
         solar_noon = _parse_local_datetime(solar_noon_raw, local_now)
@@ -315,6 +326,7 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
             now=now,
             prev_sleep_start=_parse_iso(self._persistent.last_sleep_start),
             prev_awake_start=_parse_iso(self._persistent.last_awake_start),
+            indicator_active_since=wake_indicator_active_since,
         )
         self._persistent.bio_state = new_bio
         self._persistent.last_sleep_start = (
@@ -377,6 +389,12 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
                 "wake_needed": wake_needed,
                 "wake_next": wake_next_raw,
                 **{f"indicator_{k}": v for k, v in wake_indicators.items()},
+                **{
+                    f"indicator_{k}_active_since": (
+                        active_since.isoformat() if active_since else None
+                    )
+                    for k, active_since in wake_indicator_active_since.items()
+                },
             },
             "day_state": {
                 "solar_noon": solar_noon.isoformat() if solar_noon else None,
