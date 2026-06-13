@@ -3,6 +3,13 @@
 Alle nennenswerten Änderungen an dieser Integration. Neuester Eintrag oben.
 Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
+## [0.4.4] – 2026-06-13
+
+### Fixed
+- `benni_core_state.mark_sleep` bleibt nach einem manuellen Schlafmodus-Request
+  stabil: bereits aktive Level-Signale wie PC/Kaffee dürfen den frischen
+  Sleep-State nicht im selben Refresh direkt wieder auf `awake` heben.
+
 ## [0.4.2] – 2026-06-10
 
 ### Changed

@@ -5,7 +5,7 @@ Diese Tests sichern den **Ist-Stand** der extrahierten Toolbox-Logik ab
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from custom_components.benni_core_state import logic
 from custom_components.benni_core_state.const import (
@@ -60,9 +60,23 @@ def test_pc_from_sleep_promotes_to_awake_in_allowed_phase():
 
     (Abweichend von der alten Standalone-Logik, die hier nur 'waking' lieferte.)
     """
-    state, _, awake_ts = _bio(BIO_SLEEP, indicators={**NO_IND, "pc": True})
+    state, _, awake_ts = _bio(
+        BIO_SLEEP,
+        indicators={**NO_IND, "pc": True},
+        prev_sleep_start=NOW - timedelta(hours=5),
+    )
     assert state == BIO_AWAKE
     assert awake_ts == NOW
+
+
+def test_fresh_manual_sleep_ignores_existing_wake_indicators():
+    """mark_sleep must not be undone by stale level-based PC/coffee signals."""
+    state, _, _ = _bio(
+        BIO_SLEEP,
+        indicators={**NO_IND, "pc": True, "coffee": True},
+        prev_sleep_start=NOW,
+    )
+    assert state == BIO_SLEEP
 
 
 def test_wake_indicators_suppressed_at_night():
