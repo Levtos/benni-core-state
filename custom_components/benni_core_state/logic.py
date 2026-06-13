@@ -308,6 +308,7 @@ def compute_preheat(
 
 _STRONG_INDICATORS = ("coffee", "door")
 _SOFT_INDICATORS = ("pc", "ps5")
+_ACTIVITY_WAKE_MIN_SLEEP = timedelta(hours=4)
 _WAKE_ALLOWED_DAY_STATES = (
     DAY_EARLY_MORNING,
     DAY_LATE_MORNING,
@@ -326,6 +327,20 @@ def wake_indicators_allowed(day_state: str | None) -> bool:
     conservatively: do not infer wake from activity noise.
     """
     return day_state in _WAKE_ALLOWED_DAY_STATES
+
+
+def _activity_wake_grace_active(
+    prev_sleep_start: datetime | None, now: datetime
+) -> bool:
+    """Suppress level-based wake indicators right after manual sleep.
+
+    ``mark_sleep`` writes ``last_sleep_start`` before the next coordinator
+    refresh. Without a grace window, already-active PC/coffee signals can
+    immediately undo the explicit sleep request in the same refresh.
+    """
+    if prev_sleep_start is None:
+        return False
+    return now - prev_sleep_start < _ACTIVITY_WAKE_MIN_SLEEP
 
 
 def compute_bio_state(
@@ -359,7 +374,11 @@ def compute_bio_state(
 
     strong = any(indicators.get(k) for k in _STRONG_INDICATORS)
     soft = any(indicators.get(k) for k in _SOFT_INDICATORS)
-    activity_wake = wake_indicators_allowed(day_state) and (strong or soft)
+    activity_wake = (
+        wake_indicators_allowed(day_state)
+        and not _activity_wake_grace_active(prev_sleep_start, now)
+        and (strong or soft)
+    )
 
     # Genuine departure forces awake — you can't be sleeping while walking out.
     if presence_personal == PERS_AWAY and prev_state != BIO_AWAKE:
