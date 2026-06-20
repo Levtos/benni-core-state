@@ -67,11 +67,29 @@ def _is_fresh(ts: datetime | None, now: datetime, freshness_s: int) -> bool:
     return (now - ts) <= timedelta(seconds=freshness_s)
 
 
+def _ssid_matches(ssid: str | None, ssid_set: list[str] | set[str] | None) -> bool:
+    """True if the raw SSID sensor value is one of the configured anchor SSIDs.
+
+    Case-/whitespace-tolerant. ``Not Connected`` / ``unknown`` and any unknown
+    network simply fail to match — SSID is *positive-only* evidence: it can pull
+    presence towards ``zuhause`` / ``bei_eltern`` but never towards ``abwesend``.
+    """
+    if not ssid or not ssid_set:
+        return False
+    norm = str(ssid).strip().casefold()
+    if norm in ("not connected", "unknown", "unavailable", ""):
+        return False
+    return norm in {str(s).strip().casefold() for s in ssid_set}
+
+
 # --------------------------------------------------------- presence_personal
 
 
 def compute_presence_personal(
     *,
+    ssid: str | None = None,
+    home_ssids: list[str] | set[str] | None = None,
+    parents_ssids: list[str] | set[str] | None = None,
     wlan_benni: str | None,
     wlan_benni_ts: datetime | None,
     wlan_eltern_1: str | None,
@@ -87,23 +105,39 @@ def compute_presence_personal(
 
     Priority:
 
+    0. Raw SSID matches a configured home WLAN → ``zuhause`` (instant, no
+       freshness gate: being joined to the home WLAN is ground truth and
+       reports within seconds — far faster than the ~15 min GPS poll).
     1. Benni's WLAN tracker says ``home`` and is fresh → ``zuhause``.
-    2. Either parents-WLAN tracker says ``home`` → ``bei_eltern``.
+    2. Raw SSID matches a configured parents WLAN → ``bei_eltern`` (instant).
+    3. Either parents-WLAN tracker says ``home`` → ``bei_eltern``.
        (No freshness check: parents' router state is the ground truth, and a
        stale "home" reading there is still a strong signal that no automatic
        away-mode should fire.)
-    3. Fresh GPS in home zone → ``zuhause``.
-    4. Otherwise → ``abwesend``.
+    4. Fresh GPS in home zone → ``zuhause``.
+    5. Otherwise → ``abwesend``.
+
+    SSID is *positive-only* evidence (see ``_ssid_matches``): an unknown network
+    or a brief ``Not Connected`` blip during a 2.4/5 GHz band roam never asserts
+    ``abwesend`` — it just drops the SSID hint for that tick and GPS decides.
 
     Stale primary GPS falls back to secondary GPS, then to last-known WLAN
     state. We never silently degrade to ``abwesend`` on a single stale reading
     if a fresher source contradicts it.
     """
-    # 1) WLAN benni
+    # 0) Home WLAN by SSID — strongest, instant.
+    if _ssid_matches(ssid, home_ssids):
+        return PERS_HOME
+
+    # 1) WLAN benni (legacy boolean slot)
     if _is_home(wlan_benni) and _is_fresh(wlan_benni_ts, now, freshness_s):
         return PERS_HOME
 
-    # 2) Parents WLAN — home equivalent. No freshness gate: a router seen as
+    # 2) Parents WLAN by SSID — home equivalent, instant.
+    if _ssid_matches(ssid, parents_ssids):
+        return PERS_PARENTS
+
+    # 3) Parents WLAN — home equivalent. No freshness gate: a router seen as
     # "home" on the parents network is durable evidence that Benni is there.
     if _is_home(wlan_eltern_1) or _is_home(wlan_eltern_2):
         return PERS_PARENTS

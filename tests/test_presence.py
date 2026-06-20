@@ -28,8 +28,15 @@ FRESH_TS = NOW - timedelta(seconds=10)
 STALE_TS = NOW - timedelta(hours=2)
 
 
+HOME_SSIDS = ["Einhornaufzuchtsfarm", "Einhornaufzuchtsstation"]
+PARENTS_SSIDS = ["Martin Router King 2"]
+
+
 def _personal(**over):
     base = dict(
+        ssid=None,
+        home_ssids=HOME_SSIDS,
+        parents_ssids=PARENTS_SSIDS,
         wlan_benni=None,
         wlan_benni_ts=None,
         wlan_eltern_1=None,
@@ -43,6 +50,71 @@ def _personal(**over):
     )
     base.update(over)
     return logic.compute_presence_personal(**base)
+
+
+# --- SSID anchors (FLEET-100): instant, positive-only evidence -------------
+
+
+def test_ssid_home_24ghz_is_zuhause():
+    assert _personal(ssid="Einhornaufzuchtsfarm") == PERS_HOME
+
+
+def test_ssid_home_5ghz_band_also_zuhause():
+    # The 2.4/5 GHz bands carry different names; both must resolve to home.
+    assert _personal(ssid="Einhornaufzuchtsstation") == PERS_HOME
+
+
+def test_ssid_match_is_case_and_whitespace_tolerant():
+    assert _personal(ssid="  einhornaufzuchtsfarm ") == PERS_HOME
+
+
+def test_ssid_parents_is_bei_eltern():
+    assert _personal(ssid="Martin Router King 2") == PERS_PARENTS
+
+
+def test_ssid_home_beats_stale_away_gps():
+    # On the home WLAN is ground truth even if GPS still lags "not_home".
+    assert (
+        _personal(
+            ssid="Einhornaufzuchtsfarm",
+            gps_primary="not_home",
+            gps_primary_ts=FRESH_TS,
+        )
+        == PERS_HOME
+    )
+
+
+def test_unknown_ssid_is_ignored_falls_through_to_gps():
+    # Brother/sister/café WLAN: no anchor match → GPS decides.
+    assert _personal(ssid="Geschwister-WLAN") == PERS_AWAY
+    assert (
+        _personal(
+            ssid="Geschwister-WLAN",
+            gps_primary="home",
+            gps_primary_ts=FRESH_TS,
+        )
+        == PERS_HOME
+    )
+
+
+def test_not_connected_ssid_blip_never_forces_away():
+    # SSID is positive-only: a band-roam "Not Connected" blip must not assert
+    # away while a fresh GPS still says home.
+    assert (
+        _personal(
+            ssid="Not Connected",
+            gps_primary="home",
+            gps_primary_ts=FRESH_TS,
+        )
+        == PERS_HOME
+    )
+
+
+def test_home_ssid_outranks_parents_ssid_signal():
+    # Disjoint sets in practice; home is checked first regardless.
+    assert (
+        _personal(ssid="Einhornaufzuchtsfarm", wlan_eltern_1="home") == PERS_HOME
+    )
 
 
 # --- bei_eltern is its own state ------------------------------------------

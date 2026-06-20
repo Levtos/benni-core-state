@@ -38,9 +38,11 @@ from .const import (
     CONF_HOLIDAY_SENSOR,
     CONF_HOMEOFFICE_PING,
     CONF_HOME_RADIUS,
+    CONF_HOME_SSIDS,
     CONF_HOUSEHOLD_SOURCE,
     CONF_HYSTERESIS_M,
     CONF_MEDIA_CONTEXT,
+    CONF_PARENTS_SSIDS,
     CONF_NEAR_RADIUS,
     CONF_PC_ACTIVE,
     CONF_PREHEAT_DURATION,
@@ -50,6 +52,7 @@ from .const import (
     CONF_PROXIMITY_DISTANCE,
     CONF_PS5_ACTIVE,
     CONF_SOLAR_NOON,
+    CONF_SSID_SOURCE,
     CONF_TRACKER_FRESHNESS,
     CONF_TRANSITION_HOLD,
     CONF_WAKE_NEEDED,
@@ -69,6 +72,7 @@ from .const import (
     DOMAIN,
     PERS_PARENTS,
     PROFILE_PREFILL,
+    PROFILE_SSIDS,
     STORAGE_VERSION,
     UPDATE_INTERVAL,
     storage_key,
@@ -120,6 +124,22 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
             or PROFILE_PREFILL.get(self.profile, {}).get(key)
         )
 
+    def _ssid_set(self, key: str) -> list[str]:
+        """Anchor-SSID-Liste: Override (options/data) gewinnt, sonst Profil-Map.
+
+        Spiegelt ``_entity_id``-Präzedenz, nur für WLAN-Namen-Listen statt
+        Entity-IDs. Leere/whitespace-Werte werden verworfen.
+        """
+        raw = (
+            self.entry.options.get(key)
+            or self.entry.data.get(key)
+            or PROFILE_SSIDS.get(self.profile, {}).get(key)
+            or []
+        )
+        if isinstance(raw, str):
+            raw = [raw]
+        return [str(s).strip() for s in raw if str(s).strip()]
+
     @property
     def home_radius(self) -> float:
         return float(self._opt(CONF_HOME_RADIUS, DEFAULT_HOME_RADIUS))
@@ -151,6 +171,7 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
     def _watched_entity_ids(self) -> list[str]:
         keys = [
             CONF_GPS_PRIMARY, CONF_GPS_SECONDARY, CONF_WLAN_BENNI,
+            CONF_SSID_SOURCE,
             CONF_WLAN_ELTERN_1, CONF_WLAN_ELTERN_2,
             CONF_PROXIMITY_DISTANCE, CONF_PROXIMITY_DIRECTION,
             CONF_WAKE_NEXT, CONF_WAKE_NEEDED,
@@ -231,11 +252,15 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
         wlan_benni, wlan_benni_ts, _ = self._read_entity(CONF_WLAN_BENNI)
         wlan_e1, _, _ = self._read_entity(CONF_WLAN_ELTERN_1)
         wlan_e2, _, _ = self._read_entity(CONF_WLAN_ELTERN_2)
+        ssid, _, _ = self._read_entity(CONF_SSID_SOURCE)
+        home_ssids = self._ssid_set(CONF_HOME_SSIDS)
+        parents_ssids = self._ssid_set(CONF_PARENTS_SSIDS)
         prox_dist = self._read_float(CONF_PROXIMITY_DISTANCE)
         prox_dir, _, _ = self._read_entity(CONF_PROXIMITY_DIRECTION)
 
         # --- presence_personal --------------------------------------------
         presence_personal = logic.compute_presence_personal(
+            ssid=ssid, home_ssids=home_ssids, parents_ssids=parents_ssids,
             wlan_benni=wlan_benni, wlan_benni_ts=wlan_benni_ts,
             wlan_eltern_1=wlan_e1, wlan_eltern_2=wlan_e2,
             gps_primary=gps_primary, gps_primary_ts=gps_primary_ts,
@@ -360,6 +385,11 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
 
         attrs = {
             "presence_personal": {
+                "ssid": ssid,
+                "ssid_is_home": logic._ssid_matches(ssid, home_ssids),
+                "ssid_is_parents": logic._ssid_matches(ssid, parents_ssids),
+                "home_ssids": home_ssids,
+                "parents_ssids": parents_ssids,
                 "wlan_benni": wlan_benni,
                 "wlan_eltern_1": wlan_e1,
                 "wlan_eltern_2": wlan_e2,

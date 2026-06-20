@@ -16,6 +16,7 @@
           "gps_primary": "Primary GPS tracker (person/device_tracker)",
           "gps_secondary": "Secondary GPS tracker",
           "wlan_benni": "Benni WLAN tracker",
+          "ssid_source": "WLAN SSID source (companion-app sensor)",
           "wlan_eltern_1": "Parents WLAN tracker 1",
           "wlan_eltern_2": "Parents WLAN tracker 2",
           "proximity_distance": "Proximity — distance",
@@ -57,7 +58,16 @@
         "title": "Benni Core State options",
         "menu_options": {
           "entities": "Edit entities",
+          "ssids": "Edit WLAN SSIDs",
           "thresholds": "Edit thresholds"
+        }
+      },
+      "ssids": {
+        "title": "WLAN SSIDs",
+        "description": "WLAN names that count as anchors. Being joined to one sets presence instantly (no GPS). Multiple names per anchor (2.4/5 GHz bands). Unknown networks are ignored — GPS decides there.",
+        "data": {
+          "home_ssids": "Home WLAN names (→ zuhause)",
+          "parents_ssids": "Parents WLAN names (→ bei_eltern)"
         }
       },
       "entities": {
@@ -66,6 +76,7 @@
           "gps_primary": "Primary GPS tracker",
           "gps_secondary": "Secondary GPS tracker",
           "wlan_benni": "Benni WLAN tracker",
+          "ssid_source": "WLAN SSID source (companion-app sensor)",
           "wlan_eltern_1": "Parents WLAN tracker 1",
           "wlan_eltern_2": "Parents WLAN tracker 2",
           "proximity_distance": "Proximity — distance",

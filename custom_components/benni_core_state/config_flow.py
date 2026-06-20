@@ -31,10 +31,12 @@ from .const import (
     CONF_HOLIDAY_SENSOR,
     CONF_HOMEOFFICE_PING,
     CONF_HOME_RADIUS,
+    CONF_HOME_SSIDS,
     CONF_HOUSEHOLD_SOURCE,
     CONF_HYSTERESIS_M,
     CONF_MEDIA_CONTEXT,
     CONF_NEAR_RADIUS,
+    CONF_PARENTS_SSIDS,
     CONF_PC_ACTIVE,
     CONF_PREHEAT_DURATION,
     CONF_PREHEAT_RADIUS,
@@ -43,6 +45,7 @@ from .const import (
     CONF_PROXIMITY_DISTANCE,
     CONF_PS5_ACTIVE,
     CONF_SOLAR_NOON,
+    CONF_SSID_SOURCE,
     CONF_TRACKER_FRESHNESS,
     CONF_TRANSITION_HOLD,
     CONF_WAKE_NEEDED,
@@ -63,6 +66,7 @@ from .const import (
     NAME,
     PROFILE_LABELS,
     PROFILE_PREFILL,
+    PROFILE_SSIDS,
     PROFILES,
 )
 
@@ -78,6 +82,9 @@ _ENTITY_SLOTS: tuple[tuple[str, list[str]], ...] = (
     (CONF_GPS_PRIMARY, ["device_tracker", "person"]),
     (CONF_GPS_SECONDARY, ["device_tracker", "person"]),
     (CONF_WLAN_BENNI, ["device_tracker"]),
+    # Rohe SSID-Quelle (Companion-App-Sensor, State = aktueller WLAN-Name). Wird
+    # gegen CONF_HOME_SSIDS / CONF_PARENTS_SSIDS gematcht (eigener "ssids"-Step).
+    (CONF_SSID_SOURCE, ["sensor"]),
     # Eltern-Slots akzeptieren neben device_tracker auch binary_sensor /
     # input_boolean: so kann z.B. ein SSID-basierter Template-Sensor
     # ("on" wenn iPhone im Eltern-WLAN") direkt als bei_eltern-Quelle dienen.
@@ -133,6 +140,39 @@ def _thresholds_schema(defaults: dict[str, Any]) -> vol.Schema:
         vol.Required(CONF_TRANSITION_HOLD, default=defaults.get(CONF_TRANSITION_HOLD, DEFAULT_TRANSITION_HOLD)):
             vol.All(vol.Coerce(int), vol.Range(min=10, max=3600)),
     })
+
+
+def _ssids_schema(defaults: dict[str, Any]) -> vol.Schema:
+    """Heim-/Eltern-SSID-Listen als Freitext-Mehrfachfeld (chips)."""
+    text_list = selector.TextSelector(
+        selector.TextSelectorConfig(multiple=True)
+    )
+    return vol.Schema({
+        vol.Optional(CONF_HOME_SSIDS, default=defaults.get(CONF_HOME_SSIDS, [])): text_list,
+        vol.Optional(CONF_PARENTS_SSIDS, default=defaults.get(CONF_PARENTS_SSIDS, [])): text_list,
+    })
+
+
+_SSID_KEYS: tuple[str, ...] = (CONF_HOME_SSIDS, CONF_PARENTS_SSIDS)
+
+
+def _ssid_overrides(profile: str, user_input: dict[str, Any]) -> dict[str, Any]:
+    """Nur echte Abweichungen von der Profil-SSID-Map als Override speichern.
+
+    Leere Liste oder == Code-Default → kein Override (Repo-Liste propagiert).
+    """
+    code = PROFILE_SSIDS.get(profile, {})
+    out: dict[str, Any] = {}
+    for key in _SSID_KEYS:
+        v = [s.strip() for s in user_input.get(key, []) if s and s.strip()]
+        if v and v != code.get(key, []):
+            out[key] = v
+    return out
+
+
+def _ssid_override_or_map(profile: str, data: dict[str, Any]) -> dict[str, Any]:
+    code = PROFILE_SSIDS.get(profile, {})
+    return {key: (data.get(key) or code.get(key, [])) for key in _SSID_KEYS}
 
 
 _ENTITY_SLOT_KEYS: tuple[str, ...] = tuple(key for key, _ in _ENTITY_SLOTS)
@@ -241,7 +281,23 @@ class BenniCoreStateConfigFlow(ConfigFlow, domain=DOMAIN):
 class BenniCoreStateOptionsFlow(OptionsFlow):
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         return self.async_show_menu(
-            step_id="init", menu_options=["entities", "thresholds"],
+            step_id="init", menu_options=["entities", "ssids", "thresholds"],
+        )
+
+    async def async_step_ssids(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        profile = self.config_entry.data.get(CONF_PROFILE, DEFAULT_PROFILE)
+        if user_input is not None:
+            overrides = _ssid_overrides(profile, user_input)
+            new_data = {
+                k: v for k, v in self.config_entry.data.items()
+                if k not in _SSID_KEYS
+            }
+            new_data.update(overrides)
+            self.hass.config_entries.async_update_entry(self.config_entry, data=new_data)
+            return self.async_create_entry(title="", data=dict(self.config_entry.options))
+        return self.async_show_form(
+            step_id="ssids",
+            data_schema=_ssids_schema(_ssid_override_or_map(profile, self.config_entry.data)),
         )
 
     async def async_step_entities(self, user_input: dict[str, Any] | None = None) -> FlowResult:

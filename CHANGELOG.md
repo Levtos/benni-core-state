@@ -3,6 +3,29 @@
 Alle nennenswerten Änderungen an dieser Integration. Neuester Eintrag oben.
 Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
+## [0.5.0] – 2026-06-21
+
+### Added
+- **FLEET-100 — SSID-Anker für sofortige Presence.** Die WLAN-SSID wird jetzt
+  **nativ in core_state** ausgewertet (kein externer Template-Helper): das
+  Gehirn liest die rohe SSID-Entität (`CONF_SSID_SOURCE`) und matcht gegen
+  konfigurierbare Sets `CONF_HOME_SSIDS` / `CONF_PARENTS_SSIDS`. Auf dem
+  Heim-WLAN zu hängen → `zuhause` in Sekunden, GPS-unabhängig (vorher hing
+  Presence am ~15-Min-GPS-Poll → bis zu 60 Min Lag beim Heimkommen).
+  - Mehrere SSIDs je Anker, weil das iPhone zwischen 2,4-/5-GHz-Netzen mit
+    unterschiedlichen Namen wechselt (`Einhornaufzuchtsfarm` /
+    `Einhornaufzuchtsstation`). Single-String-Match wäre brüchig.
+  - SSID ist **positive-only** Evidenz: unbekanntes Netz (Geschwister/Café)
+    oder ein `Not Connected`-Blip beim Bandwechsel zieht Presence nie auf
+    `abwesend` — dann entscheidet weiter GPS.
+  - Prefill für Profil `benni`: `sensor.iphone_von_benjamin_ssid` + die zwei
+    Heim-SSIDs + Eltern-SSID. Override per neuem Options-Step „WLAN-SSIDs".
+
+### Note
+- Strangler-Cutover offen: nach Live-Verifikation wird der externe Template-
+  Helper `binary_sensor.benni_bei_eltern_wlan` (heute `wlan_eltern_1`) abgelöst
+  und entbunden — Eltern-SSID-Match ist der neue, präzisere Owner.
+
 ## [0.4.5] – 2026-06-13
 
 ### Fixed

@@ -16,6 +16,7 @@
           "gps_primary": "Primärer GPS-Tracker (person/device_tracker)",
           "gps_secondary": "Sekundärer GPS-Tracker",
           "wlan_benni": "Benni WLAN-Tracker",
+          "ssid_source": "WLAN-SSID-Quelle (Companion-App-Sensor)",
           "wlan_eltern_1": "Eltern WLAN-Tracker 1",
           "wlan_eltern_2": "Eltern WLAN-Tracker 2",
           "proximity_distance": "Proximity — Distanz",
@@ -57,7 +58,16 @@
         "title": "Benni Core State Optionen",
         "menu_options": {
           "entities": "Entitäten bearbeiten",
+          "ssids": "WLAN-SSIDs bearbeiten",
           "thresholds": "Schwellwerte bearbeiten"
+        }
+      },
+      "ssids": {
+        "title": "WLAN-SSIDs",
+        "description": "WLAN-Namen, die als Anker zählen. Auf einem dieser Netze zu hängen setzt Presence sofort (ohne GPS). Mehrere Namen je Anker (2,4-/5-GHz-Bänder). Unbekannte Netze werden ignoriert — dort entscheidet GPS.",
+        "data": {
+          "home_ssids": "Heim-WLAN-Namen (→ zuhause)",
+          "parents_ssids": "Eltern-WLAN-Namen (→ bei_eltern)"
         }
       },
       "entities": {
@@ -66,6 +76,7 @@
           "gps_primary": "Primärer GPS-Tracker",
           "gps_secondary": "Sekundärer GPS-Tracker",
           "wlan_benni": "Benni WLAN-Tracker",
+          "ssid_source": "WLAN-SSID-Quelle (Companion-App-Sensor)",
           "wlan_eltern_1": "Eltern WLAN-Tracker 1",
           "wlan_eltern_2": "Eltern WLAN-Tracker 2",
           "proximity_distance": "Proximity — Distanz",

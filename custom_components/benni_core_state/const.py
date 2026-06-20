@@ -27,6 +27,15 @@ CONF_GPS_SECONDARY = "gps_secondary"
 CONF_WLAN_BENNI = "wlan_benni"
 CONF_WLAN_ELTERN_1 = "wlan_eltern_1"
 CONF_WLAN_ELTERN_2 = "wlan_eltern_2"
+# SSID-Quelle (roher Companion-App-SSID-Sensor) + Heim-/Eltern-SSID-Sets.
+# Die SSID-Auswertung lebt NATIV in core_state (kein externer Template-Helper):
+# das Gehirn liest die rohe SSID-Entität und matcht gegen ein konfigurierbares
+# Set. Auf dem Heim-/Eltern-WLAN zu hängen ist Boden-Wahrheit → sofortiger,
+# GPS-unabhängiger Presence-Pfad (FLEET-100). Mehrere SSIDs je Anker, weil das
+# iPhone zwischen 2,4-/5-GHz-Netzen mit unterschiedlichen Namen wechselt.
+CONF_SSID_SOURCE = "ssid_source"
+CONF_HOME_SSIDS = "home_ssids"
+CONF_PARENTS_SSIDS = "parents_ssids"
 CONF_PROXIMITY_DISTANCE = "proximity_distance"
 CONF_PROXIMITY_DIRECTION = "proximity_direction"
 CONF_WAKE_NEXT = "wake_next"
@@ -150,6 +159,7 @@ PROFILE_PREFILL: dict[str, dict[str, str]] = {
     PROFILE_BENNI: {
         CONF_GPS_PRIMARY: "device_tracker.benni_iphone_icloud3",
         CONF_GPS_SECONDARY: "device_tracker.iphone_von_benjamin",
+        CONF_SSID_SOURCE: "sensor.iphone_von_benjamin_ssid",
         CONF_WLAN_ELTERN_1: "binary_sensor.benni_bei_eltern_wlan",
         # Proximity (Benjamin-spezifisch): Distanz in m + Richtung-Enum mit
         # Wert "towards" (= was die Logik für Annäherung erwartet). Aktiviert
@@ -163,6 +173,18 @@ PROFILE_PREFILL: dict[str, dict[str, str]] = {
         # extrahierten L1-Feeder benni_media_state (profil-getriebener Slug).
         CONF_MEDIA_CONTEXT: "sensor.benni_media_state_media_context",
         CONF_SOLAR_NOON: "sensor.system_sun2_solar_noon",
+    },
+    PROFILE_ELTERN: {},
+}
+
+# Heim-/Eltern-SSID-Sets je Profil. Getrennt von PROFILE_PREFILL (das sind
+# Entity-IDs) — hier stehen WLAN-Namen-Listen. Override per Options-Flow möglich;
+# fehlt der Override, propagiert die Repo-Liste (wie bei den Entity-Bindungen).
+# Unbekannte SSID (Bruder/Schwester/Café) = kein Match → fällt auf GPS durch.
+PROFILE_SSIDS: dict[str, dict[str, list[str]]] = {
+    PROFILE_BENNI: {
+        CONF_HOME_SSIDS: ["Einhornaufzuchtsfarm", "Einhornaufzuchtsstation"],
+        CONF_PARENTS_SSIDS: ["Martin Router King 2"],
     },
     PROFILE_ELTERN: {},
 }
