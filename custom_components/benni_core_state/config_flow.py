@@ -63,6 +63,7 @@ from .const import (
     DEFAULT_PROFILE,
     DEFAULT_TRANSITION_HOLD,
     DOMAIN,
+    LEGACY_ENTITY_MAP,
     NAME,
     PROFILE_LABELS,
     PROFILE_PREFILL,
@@ -98,8 +99,8 @@ _ENTITY_SLOTS: tuple[tuple[str, list[str]], ...] = (
     # als Inputs, ohne Wake-Planner-Code zu importieren.
     (CONF_WAKE_NEXT, ["sensor", "input_datetime"]),
     (CONF_WAKE_NEEDED, ["binary_sensor", "input_boolean"]),
-    # core_devices liefert die Geräte-Wahrheit als `sensor.benni_device_*`
-    # (on/off-State) → `sensor` muss als Domain wählbar sein, sonst filtert der
+    # core_devices liefert die Geräte-Wahrheit als Master-Sensor
+    # (`active`/`off`-State) → `sensor` muss als Domain wählbar sein, sonst filtert der
     # Flow die richtige Entität raus (FLEET: PC-Wake-Fehlbindung 2026-06-12).
     (CONF_PC_ACTIVE, ["binary_sensor", "sensor", "switch", "input_boolean"]),
     (CONF_PS5_ACTIVE, ["binary_sensor", "sensor", "switch", "input_boolean"]),
@@ -178,6 +179,12 @@ def _ssid_override_or_map(profile: str, data: dict[str, Any]) -> dict[str, Any]:
 _ENTITY_SLOT_KEYS: tuple[str, ...] = tuple(key for key, _ in _ENTITY_SLOTS)
 
 
+def _normalize_entity_id(value: Any) -> Any:
+    if isinstance(value, str):
+        return LEGACY_ENTITY_MAP.get(value, value)
+    return value
+
+
 def _entity_overrides(profile: str, user_input: dict[str, Any]) -> dict[str, Any]:
     """Nur echte Abweichungen vom Profil-Map als Override speichern.
 
@@ -187,7 +194,7 @@ def _entity_overrides(profile: str, user_input: dict[str, Any]) -> dict[str, Any
     code = PROFILE_PREFILL.get(profile, {})
     out: dict[str, Any] = {}
     for key in _ENTITY_SLOT_KEYS:
-        v = user_input.get(key)
+        v = _normalize_entity_id(user_input.get(key))
         if v and v != code.get(key):
             out[key] = v
     return out
@@ -198,7 +205,7 @@ def _override_or_map(profile: str, data: dict[str, Any]) -> dict[str, Any]:
     code = PROFILE_PREFILL.get(profile, {})
     out: dict[str, Any] = {}
     for key in _ENTITY_SLOT_KEYS:
-        v = data.get(key) or code.get(key)
+        v = _normalize_entity_id(data.get(key)) or code.get(key)
         if v:
             out[key] = v
     return out
@@ -219,7 +226,7 @@ def _profile_schema(default: str) -> vol.Schema:
 
 
 class BenniCoreStateConfigFlow(ConfigFlow, domain=DOMAIN):
-    VERSION = 1
+    VERSION = 2
 
     def __init__(self) -> None:
         self._profile: str = DEFAULT_PROFILE

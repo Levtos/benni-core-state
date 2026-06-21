@@ -3,6 +3,14 @@
 Alle nennenswerten Änderungen an dieser Integration. Neuester Eintrag oben.
 Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
+## [0.5.1] – 2026-06-22
+
+### Changed
+- PC-Wake-Indikator im Benni-Prefill von `sensor.benni_device_living_pc` auf
+  den bestehenden Core-Devices-Master `sensor.benni_master_pc` umgebunden.
+- Bestehende ConfigEntries migrieren gespeicherte alte PC-Bindings automatisch
+  auf den Master; der Options-Flow normalisiert den alten Wert ebenfalls.
+
 ## [0.5.0] – 2026-06-21
 
 ### Added

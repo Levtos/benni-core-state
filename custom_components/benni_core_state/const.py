@@ -166,7 +166,7 @@ PROFILE_PREFILL: dict[str, dict[str, str]] = {
         # Band/Preheat/Transition-nach-Distanz (in der Toolbox war das null).
         CONF_PROXIMITY_DISTANCE: "sensor.home_entfernung_von_iphone_von_benjamin",
         CONF_PROXIMITY_DIRECTION: "sensor.home_bewegung_von_iphone_von_benjamin",
-        CONF_PC_ACTIVE: "sensor.benni_device_living_pc",
+        CONF_PC_ACTIVE: "sensor.benni_master_pc",
         CONF_WAKE_NEEDED: "binary_sensor.wake_planner_benni_wake_needed",
         CONF_WAKE_NEXT: "sensor.wake_planner_benni_next_wake",
         # FLEET-36 Cut-over: vom Toolbox-Modul benni_media_context auf den
@@ -175,6 +175,10 @@ PROFILE_PREFILL: dict[str, dict[str, str]] = {
         CONF_SOLAR_NOON: "sensor.system_sun2_solar_noon",
     },
     PROFILE_ELTERN: {},
+}
+
+LEGACY_ENTITY_MAP: Final[dict[str, str]] = {
+    "sensor.benni_device_living_pc": "sensor.benni_master_pc",
 }
 
 # Heim-/Eltern-SSID-Sets je Profil. Getrennt von PROFILE_PREFILL (das sind

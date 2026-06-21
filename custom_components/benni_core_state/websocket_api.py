@@ -50,7 +50,7 @@ INPUT_SLOTS: tuple[tuple[str, str], ...] = (
     (CONF_PROXIMITY_DIRECTION, "Proximity Richtung"),
     (CONF_WAKE_NEEDED, "Wake needed"),
     (CONF_WAKE_NEXT, "Wake next"),
-    (CONF_PC_ACTIVE, "PC aktiv"),
+    (CONF_PC_ACTIVE, "PC Master"),
     (CONF_PS5_ACTIVE, "PS5 aktiv"),
     (CONF_COFFEE_ACTIVE, "Kaffee aktiv"),
     (CONF_DOOR_WAKE, "Tür-Wake"),
