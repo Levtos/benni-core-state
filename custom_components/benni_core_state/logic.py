@@ -103,19 +103,31 @@ def compute_presence_personal(
 ) -> str:
     """Decide ``zuhause`` / ``bei_eltern`` / ``abwesend``.
 
-    Priority:
+    Priority (FLEET-100 Phase A — primary GPS is authoritative for *away*):
 
-    0. Raw SSID matches a configured home WLAN → ``zuhause`` (instant, no
-       freshness gate: being joined to the home WLAN is ground truth and
-       reports within seconds — far faster than the ~15 min GPS poll).
-    1. Benni's WLAN tracker says ``home`` and is fresh → ``zuhause``.
+    * **Away override:** a *fresh* primary GPS reading that places Benni
+      OUTSIDE the home zone (``gps_primary_fresh_away``) suppresses the two
+      "phone is on the home WLAN" home signals (rules 0 & 1). Those signals go
+      stale silently — the iOS companion SSID sensor freezes its last value, so
+      "on home WLAN" alone is no proof the *person* is home (phone left at
+      home). icloud3 GPS, which follows the person, wins.
+
+    0. Raw SSID matches a configured home WLAN → ``zuhause`` (instant) —
+       *unless* ``gps_primary_fresh_away``.
+    1. Benni's WLAN tracker says ``home`` and is fresh → ``zuhause`` —
+       *unless* ``gps_primary_fresh_away``.
     2. Raw SSID matches a configured parents WLAN → ``bei_eltern`` (instant).
     3. Either parents-WLAN tracker says ``home`` → ``bei_eltern``.
        (No freshness check: parents' router state is the ground truth, and a
        stale "home" reading there is still a strong signal that no automatic
-       away-mode should fire.)
+       away-mode should fire.) Parents detection is intentionally NOT gated by
+       the GPS-away override — a fresh GPS outside the home zone is exactly the
+       situation where Benni may be at his parents'.
     4. Fresh GPS in home zone → ``zuhause``.
-    5. Otherwise → ``abwesend``.
+    5. WLAN benni was ``home`` but went stale and *no* fresh GPS contradicts →
+       hold ``zuhause`` (sleeping-phone guard). Structurally exclusive with the
+       away override, which requires a fresh primary GPS.
+    6. Otherwise → ``abwesend``.
 
     SSID is *positive-only* evidence (see ``_ssid_matches``): an unknown network
     or a brief ``Not Connected`` blip during a 2.4/5 GHz band roam never asserts
@@ -125,15 +137,27 @@ def compute_presence_personal(
     state. We never silently degrade to ``abwesend`` on a single stale reading
     if a fresher source contradicts it.
     """
-    # 0) Home WLAN by SSID — strongest, instant.
-    if _ssid_matches(ssid, home_ssids):
+    fresh_primary = _is_fresh(gps_primary_ts, now, freshness_s)
+    fresh_secondary = _is_fresh(gps_secondary_ts, now, freshness_s)
+
+    # A fresh primary GPS that puts Benni OUTSIDE the home zone is authoritative
+    # for being away: it overrides the "phone on home WLAN" home signals, which
+    # freeze stale when the iOS companion app stops reporting (FLEET-100).
+    gps_primary_fresh_away = fresh_primary and not _is_home(gps_primary)
+
+    # 0) Home WLAN by SSID — instant, but yields to a fresh contradicting GPS.
+    if _ssid_matches(ssid, home_ssids) and not gps_primary_fresh_away:
         return PERS_HOME
 
-    # 1) WLAN benni (legacy boolean slot)
-    if _is_home(wlan_benni) and _is_fresh(wlan_benni_ts, now, freshness_s):
+    # 1) WLAN benni (legacy boolean slot) — same GPS-away guard.
+    if (
+        _is_home(wlan_benni)
+        and _is_fresh(wlan_benni_ts, now, freshness_s)
+        and not gps_primary_fresh_away
+    ):
         return PERS_HOME
 
-    # 2) Parents WLAN by SSID — home equivalent, instant.
+    # 2) Parents WLAN by SSID — home equivalent, instant. Not GPS-gated.
     if _ssid_matches(ssid, parents_ssids):
         return PERS_PARENTS
 
@@ -142,16 +166,13 @@ def compute_presence_personal(
     if _is_home(wlan_eltern_1) or _is_home(wlan_eltern_2):
         return PERS_PARENTS
 
-    # 3) GPS with fallback
-    fresh_primary = _is_fresh(gps_primary_ts, now, freshness_s)
-    fresh_secondary = _is_fresh(gps_secondary_ts, now, freshness_s)
-
+    # 4) GPS home zone (fallback after the WLAN signals).
     if fresh_primary and _is_home(gps_primary):
         return PERS_HOME
     if fresh_secondary and _is_home(gps_secondary):
         return PERS_HOME
 
-    # If WLAN benni was home but went stale, and GPS does not contradict,
+    # 5) If WLAN benni was home but went stale, and GPS does not contradict,
     # keep zuhause to avoid a false-leaving event from a sleeping phone.
     if _is_home(wlan_benni) and not (fresh_primary or fresh_secondary):
         return PERS_HOME

@@ -73,14 +73,63 @@ def test_ssid_parents_is_bei_eltern():
 
 
 def test_ssid_home_beats_stale_away_gps():
-    # On the home WLAN is ground truth even if GPS still lags "not_home".
+    # On the home WLAN beats a STALE laggy GPS still reading "not_home" (the
+    # ~15 min poll legitimately lags a real arrival). Stale ⇒ no away override.
     assert (
         _personal(
             ssid="Einhornaufzuchtsfarm",
             gps_primary="not_home",
-            gps_primary_ts=FRESH_TS,
+            gps_primary_ts=STALE_TS,
         )
         == PERS_HOME
+    )
+
+
+def test_fresh_away_gps_overrides_stuck_home_ssid():
+    # FLEET-100 smoking gun (2026-06-30): the iOS companion SSID sensor froze
+    # on the home WLAN the whole time Benni was out. A FRESH primary GPS
+    # "not_home" is authoritative and must override the stuck SSID → abwesend.
+    assert (
+        _personal(
+            ssid="Einhornaufzuchtsstation",
+            gps_primary="not_home",
+            gps_primary_ts=FRESH_TS,
+        )
+        == PERS_AWAY
+    )
+
+
+def test_fresh_away_gps_overrides_fresh_home_wlan_benni():
+    # The away override also covers the legacy wlan_benni "home" slot.
+    assert (
+        _personal(
+            wlan_benni="home",
+            wlan_benni_ts=FRESH_TS,
+            gps_primary="not_home",
+            gps_primary_ts=FRESH_TS,
+        )
+        == PERS_AWAY
+    )
+
+
+def test_fresh_away_gps_does_not_break_bei_eltern():
+    # bei_eltern is NOT gated by the GPS-away override: a fresh GPS outside the
+    # home zone is exactly when Benni may be at his parents'.
+    assert (
+        _personal(
+            ssid="Martin Router King 2",
+            gps_primary="not_home",
+            gps_primary_ts=FRESH_TS,
+        )
+        == PERS_PARENTS
+    )
+    assert (
+        _personal(
+            wlan_eltern_1="home",
+            gps_primary="not_home",
+            gps_primary_ts=FRESH_TS,
+        )
+        == PERS_PARENTS
     )
 
 
