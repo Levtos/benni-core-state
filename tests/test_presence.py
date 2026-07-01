@@ -18,6 +18,9 @@ from custom_components.benni_core_state.const import (
     PERS_AWAY,
     PERS_HOME,
     PERS_PARENTS,
+    EFF_ARRIVING,
+    EFF_LEAVING,
+    EFF_UNCERTAIN,
     TRANS_COMING_HOME,
     TRANS_LEAVING_HOME,
     TRANS_NONE,
@@ -320,3 +323,68 @@ def test_band_classification_fresh():
 def test_band_hysteresis_holds_inner_state():
     assert _band(distance_m=130, prev_band=BAND_HOME) == BAND_HOME
     assert _band(distance_m=130) == BAND_PREHEAT
+
+
+# --- policy-grade effective presence --------------------------------------
+
+
+def _effective(**over):
+    base = dict(
+        presence_personal=PERS_AWAY,
+        home_band=BAND_NEAR,
+        distance_m=200,
+        direction=None,
+        now=NOW,
+        person_source_ts=FRESH_TS,
+        band_source_ts=FRESH_TS,
+        distance_ts=FRESH_TS,
+        direction_ts=FRESH_TS,
+        previous_distance_m=150,
+        previous_effective="away",
+        previous_candidate=None,
+        previous_candidate_started_at=None,
+        last_home_at=NOW - timedelta(minutes=5),
+        last_away_at=NOW - timedelta(minutes=5),
+    )
+    base.update(over)
+    return logic.compute_effective_presence(**base)
+
+
+def test_effective_leaving_when_home_band_stale_but_distance_rises():
+    result = _effective(
+        home_band=BAND_HOME,
+        distance_m=260,
+        previous_distance_m=120,
+        direction="away",
+    )
+    assert result.effective_presence == EFF_LEAVING
+    assert result.transition == EFF_LEAVING
+    assert result.block_reason == "moving_away_from_home"
+    assert result.confidence >= 0.75
+
+
+def test_effective_arriving_after_stable_away_and_decreasing_distance():
+    result = _effective(
+        home_band=BAND_NEAR,
+        distance_m=900,
+        previous_distance_m=1400,
+        direction="towards",
+        previous_candidate=EFF_ARRIVING,
+        previous_candidate_started_at=NOW - timedelta(seconds=10),
+        last_away_at=NOW - timedelta(minutes=10),
+    )
+    assert result.effective_presence == EFF_ARRIVING
+    assert result.transition == EFF_ARRIVING
+    assert result.confidence >= 0.9
+
+
+def test_effective_away_near_without_clear_trend_is_uncertain():
+    result = _effective(
+        home_band=BAND_NEAR,
+        distance_m=900,
+        previous_distance_m=905,
+        direction=None,
+    )
+    assert result.effective_presence == EFF_UNCERTAIN
+    assert result.transition == EFF_UNCERTAIN
+    assert result.block_reason == "person_away_near_home_without_clear_trend"

@@ -59,6 +59,8 @@ Die folgende Tabelle zeigt die Route **Benni**:
 | `sensor.benni_core_state_presence_household` | enum | `leer`, `nicht_leer` |
 | `sensor.benni_core_state_presence_band` | enum | `home`, `preheat`, `near`, `far` |
 | `sensor.benni_core_state_presence_transition` | enum | `none`, `coming_home`, `leaving_home`, `passing_through` |
+| `sensor.benni_core_state_presence_effective` | enum | `home`, `away`, `arriving`, `leaving`, `uncertain`, `stale` |
+| `sensor.benni_core_state_presence_effective_transition` | enum | `home`, `away`, `arriving`, `leaving`, `uncertain`, `stale` |
 | `binary_sensor.benni_core_state_presence_preheat_active` | running | on / off |
 | `sensor.benni_core_state_bio_state` | enum | `sleep`, `waking`, `awake` |
 | `sensor.benni_core_state_day_state` | enum | `early_morning` … `late_night` (8 dynamische Phasen) |
