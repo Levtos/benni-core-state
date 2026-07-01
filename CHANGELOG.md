@@ -3,6 +3,14 @@
 Alle nennenswerten Änderungen an dieser Integration. Neuester Eintrag oben.
 Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
+## [0.5.3] - 2026-07-01
+
+### Fixed
+- Frische Wake-Indikatoren wie Kaffeemaschine, Tuer/Fenster, PC oder PS5
+  duerfen `sleep` jetzt in jeder Nicht-Nacht-Phase auch ohne `wake_needed` auf
+  `awake` heben. Nur stale Level-Signale, die bereits vor Schlafbeginn aktiv
+  waren, bleiben blockiert.
+
 ## [0.5.1] – 2026-06-22
 
 ### Changed
