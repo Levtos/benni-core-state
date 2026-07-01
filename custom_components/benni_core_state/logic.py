@@ -13,6 +13,7 @@ from HA wiring lets us pin them down with a small test suite.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 from .const import (
@@ -41,6 +42,17 @@ from .const import (
     DC_FREI,
     DC_WERKTAG,
     DC_WOCHENENDE,
+    DEFAULT_ARRIVING_STABILIZE_SECONDS,
+    DEFAULT_LEAVING_STABILIZE_SECONDS,
+    DEFAULT_PRESENCE_STALE_SECONDS,
+    DEFAULT_PROXIMITY_TREND_EPSILON_M,
+    DEFAULT_STABLE_AWAY_SECONDS,
+    EFF_ARRIVING,
+    EFF_AWAY,
+    EFF_HOME,
+    EFF_LEAVING,
+    EFF_STALE,
+    EFF_UNCERTAIN,
     HH_EMPTY,
     HH_OCCUPIED,
     PERS_AWAY,
@@ -55,6 +67,23 @@ from .const import (
 # ---------------------------------------------------------------- helpers
 
 
+@dataclass(frozen=True)
+class EffectivePresenceResult:
+    effective_presence: str
+    transition: str
+    confidence: float
+    source_priority: str
+    proximity_distance: float | None
+    proximity_direction: str | None
+    stale_inputs: list[str] = field(default_factory=list)
+    block_reason: str | None = None
+    last_home_at: datetime | None = None
+    last_away_at: datetime | None = None
+    candidate_state: str | None = None
+    candidate_started_at: datetime | None = None
+    proximity_trend: str = "unknown"
+
+
 def _is_home(value: str | None) -> bool:
     if value is None:
         return False
@@ -65,6 +94,28 @@ def _is_fresh(ts: datetime | None, now: datetime, freshness_s: int) -> bool:
     if ts is None:
         return False
     return (now - ts) <= timedelta(seconds=freshness_s)
+
+
+def _iso_or_none(value: datetime | None) -> str | None:
+    return value.isoformat() if value is not None else None
+
+
+def effective_presence_attrs(result: EffectivePresenceResult) -> dict[str, object]:
+    return {
+        "effective_presence": result.effective_presence,
+        "transition": result.transition,
+        "confidence": result.confidence,
+        "source_priority": result.source_priority,
+        "proximity_distance": result.proximity_distance,
+        "proximity_direction": result.proximity_direction,
+        "proximity_trend": result.proximity_trend,
+        "stale_inputs": list(result.stale_inputs),
+        "block_reason": result.block_reason,
+        "last_home_at": _iso_or_none(result.last_home_at),
+        "last_away_at": _iso_or_none(result.last_away_at),
+        "candidate_state": result.candidate_state,
+        "candidate_started_at": _iso_or_none(result.candidate_started_at),
+    }
 
 
 def _ssid_matches(ssid: str | None, ssid_set: list[str] | set[str] | None) -> bool:
@@ -80,6 +131,41 @@ def _ssid_matches(ssid: str | None, ssid_set: list[str] | set[str] | None) -> bo
     if norm in ("not connected", "unknown", "unavailable", ""):
         return False
     return norm in {str(s).strip().casefold() for s in ssid_set}
+
+
+def _proximity_trend(
+    distance_m: float | None,
+    previous_distance_m: float | None,
+    direction: str | None,
+    *,
+    epsilon_m: float,
+) -> str:
+    if direction:
+        normalized = direction.strip().lower()
+        if normalized in ("towards", "towards_home", "approaching", "home"):
+            return "towards_home"
+        if normalized in ("away", "away_from", "away_from_home", "leaving"):
+            return "away_from_home"
+    if distance_m is None or previous_distance_m is None:
+        return "unknown"
+    delta = distance_m - previous_distance_m
+    if delta >= epsilon_m:
+        return "away_from_home"
+    if delta <= -epsilon_m:
+        return "towards_home"
+    return "flat"
+
+
+def _presence_candidate(
+    *,
+    candidate: str,
+    previous_candidate: str | None,
+    previous_started_at: datetime | None,
+    now: datetime,
+) -> tuple[str, datetime]:
+    if previous_candidate == candidate and previous_started_at is not None:
+        return previous_candidate, previous_started_at
+    return candidate, now
 
 
 # --------------------------------------------------------- presence_personal
@@ -245,6 +331,219 @@ def compute_presence_band(
     if distance_m <= near_r:
         return BAND_NEAR
     return BAND_FAR
+
+
+# --------------------------------------------------------- effective presence
+
+
+def compute_effective_presence(
+    *,
+    presence_personal: str,
+    home_band: str,
+    distance_m: float | None,
+    direction: str | None,
+    now: datetime,
+    person_source_ts: datetime | None,
+    band_source_ts: datetime | None,
+    distance_ts: datetime | None,
+    direction_ts: datetime | None,
+    previous_distance_m: float | None,
+    previous_effective: str | None,
+    previous_candidate: str | None,
+    previous_candidate_started_at: datetime | None,
+    last_home_at: datetime | None,
+    last_away_at: datetime | None,
+    stale_s: int = DEFAULT_PRESENCE_STALE_SECONDS,
+    stable_away_s: int = DEFAULT_STABLE_AWAY_SECONDS,
+    arriving_stabilize_s: int = DEFAULT_ARRIVING_STABILIZE_SECONDS,
+    leaving_stabilize_s: int = DEFAULT_LEAVING_STABILIZE_SECONDS,
+    trend_epsilon_m: float = DEFAULT_PROXIMITY_TREND_EPSILON_M,
+) -> EffectivePresenceResult:
+    """Arbitrate the policy-grade presence contract for safety consumers.
+
+    This is intentionally stricter than ``presence_personal`` and
+    ``presence_band``. Near/home rings are positive hints only; they never
+    unlock by themselves when person state and proximity trend disagree.
+    """
+    source_ts = {
+        "person": person_source_ts,
+        "band": band_source_ts,
+        "proximity_distance": distance_ts,
+        "proximity_direction": direction_ts,
+    }
+    stale_inputs = [
+        key for key, ts in source_ts.items() if not _is_fresh(ts, now, stale_s)
+    ]
+    all_presence_inputs_stale = len(stale_inputs) == len(source_ts)
+    trend = _proximity_trend(
+        distance_m, previous_distance_m, direction, epsilon_m=trend_epsilon_m
+    )
+
+    if all_presence_inputs_stale:
+        return EffectivePresenceResult(
+            effective_presence=EFF_STALE,
+            transition=EFF_STALE,
+            confidence=0.0,
+            source_priority="stale_guard",
+            proximity_distance=distance_m,
+            proximity_direction=direction,
+            stale_inputs=stale_inputs,
+            block_reason="all_presence_inputs_stale",
+            last_home_at=last_home_at,
+            last_away_at=last_away_at,
+            candidate_state=previous_candidate,
+            candidate_started_at=previous_candidate_started_at,
+            proximity_trend=trend,
+        )
+
+    if presence_personal == PERS_HOME:
+        return EffectivePresenceResult(
+            effective_presence=EFF_HOME,
+            transition=EFF_HOME,
+            confidence=0.98,
+            source_priority="person_home",
+            proximity_distance=distance_m,
+            proximity_direction=direction,
+            stale_inputs=stale_inputs,
+            last_home_at=now,
+            last_away_at=last_away_at,
+            proximity_trend=trend,
+        )
+
+    # Eltern is not a home-arrival trigger for the Einhornzentrale door. It is
+    # a known, safe non-home location and must not be treated as arriving.
+    if presence_personal == PERS_PARENTS:
+        return EffectivePresenceResult(
+            effective_presence=EFF_AWAY,
+            transition=EFF_AWAY,
+            confidence=0.9,
+            source_priority="parents_presence",
+            proximity_distance=distance_m,
+            proximity_direction=direction,
+            stale_inputs=stale_inputs,
+            block_reason="at_parents_not_arrival",
+            last_home_at=last_home_at,
+            last_away_at=now,
+            proximity_trend=trend,
+        )
+
+    if presence_personal != PERS_AWAY:
+        return EffectivePresenceResult(
+            effective_presence=EFF_UNCERTAIN,
+            transition=EFF_UNCERTAIN,
+            confidence=0.2,
+            source_priority="unknown_person",
+            proximity_distance=distance_m,
+            proximity_direction=direction,
+            stale_inputs=stale_inputs,
+            block_reason="presence_personal_unknown",
+            last_home_at=last_home_at,
+            last_away_at=last_away_at,
+            candidate_state=previous_candidate,
+            candidate_started_at=previous_candidate_started_at,
+            proximity_trend=trend,
+        )
+
+    if home_band == BAND_FAR:
+        return EffectivePresenceResult(
+            effective_presence=EFF_AWAY,
+            transition=EFF_AWAY,
+            confidence=0.95,
+            source_priority="person_away_band_far",
+            proximity_distance=distance_m,
+            proximity_direction=direction,
+            stale_inputs=stale_inputs,
+            last_home_at=last_home_at,
+            last_away_at=now,
+            proximity_trend=trend,
+        )
+
+    if trend == "away_from_home":
+        candidate, started_at = _presence_candidate(
+            candidate=EFF_LEAVING,
+            previous_candidate=previous_candidate,
+            previous_started_at=previous_candidate_started_at,
+            now=now,
+        )
+        stabilized = (now - started_at) >= timedelta(seconds=leaving_stabilize_s)
+        state = EFF_AWAY if stabilized and previous_effective == EFF_AWAY else EFF_LEAVING
+        return EffectivePresenceResult(
+            effective_presence=state,
+            transition=EFF_LEAVING,
+            confidence=0.88 if stabilized else 0.78,
+            source_priority="person_away_distance_increasing",
+            proximity_distance=distance_m,
+            proximity_direction=direction,
+            stale_inputs=stale_inputs,
+            block_reason="moving_away_from_home",
+            last_home_at=last_home_at,
+            last_away_at=now if stabilized else last_away_at,
+            candidate_state=candidate,
+            candidate_started_at=started_at,
+            proximity_trend=trend,
+        )
+
+    if trend == "towards_home":
+        stable_since = last_away_at
+        stable_away = (
+            stable_since is not None
+            and (now - stable_since) >= timedelta(seconds=stable_away_s)
+        )
+        candidate, started_at = _presence_candidate(
+            candidate=EFF_ARRIVING,
+            previous_candidate=previous_candidate,
+            previous_started_at=previous_candidate_started_at,
+            now=now,
+        )
+        candidate_stable = (now - started_at) >= timedelta(seconds=arriving_stabilize_s)
+        if stable_away and candidate_stable:
+            return EffectivePresenceResult(
+                effective_presence=EFF_ARRIVING,
+                transition=EFF_ARRIVING,
+                confidence=0.93,
+                source_priority="stable_away_then_towards_home",
+                proximity_distance=distance_m,
+                proximity_direction=direction,
+                stale_inputs=stale_inputs,
+                last_home_at=last_home_at,
+                last_away_at=last_away_at,
+                candidate_state=candidate,
+                candidate_started_at=started_at,
+                proximity_trend=trend,
+            )
+        return EffectivePresenceResult(
+            effective_presence=EFF_UNCERTAIN,
+            transition=EFF_UNCERTAIN,
+            confidence=0.55,
+            source_priority="arriving_candidate_unstable",
+            proximity_distance=distance_m,
+            proximity_direction=direction,
+            stale_inputs=stale_inputs,
+            block_reason=(
+                "away_not_stable" if not stable_away else "arriving_not_stabilized"
+            ),
+            last_home_at=last_home_at,
+            last_away_at=last_away_at,
+            candidate_state=candidate,
+            candidate_started_at=started_at,
+            proximity_trend=trend,
+        )
+
+    return EffectivePresenceResult(
+        effective_presence=EFF_UNCERTAIN,
+        transition=EFF_UNCERTAIN,
+        confidence=0.35,
+        source_priority="contradictory_without_clear_trend",
+        proximity_distance=distance_m,
+        proximity_direction=direction,
+        stale_inputs=stale_inputs,
+        block_reason="person_away_near_home_without_clear_trend",
+        last_home_at=last_home_at,
+        last_away_at=last_away_at,
+        candidate_state=previous_candidate,
+        candidate_started_at=previous_candidate_started_at,
+        proximity_trend=trend,
+    )
 
 
 # --------------------------------------------------------- transition

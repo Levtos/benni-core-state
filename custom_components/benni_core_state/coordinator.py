@@ -224,7 +224,7 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
         state = self.hass.states.get(eid)
         if state is None:
             return None, None, {}
-        return state.state, state.last_updated, dict(state.attributes)
+        return state.state, state.last_changed, dict(state.attributes)
 
     def _read_float(self, key: str) -> float | None:
         val, _, _ = self._read_entity(key)
@@ -250,13 +250,14 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
         gps_primary, gps_primary_ts, _ = self._read_entity(CONF_GPS_PRIMARY)
         gps_secondary, gps_secondary_ts, _ = self._read_entity(CONF_GPS_SECONDARY)
         wlan_benni, wlan_benni_ts, _ = self._read_entity(CONF_WLAN_BENNI)
-        wlan_e1, _, _ = self._read_entity(CONF_WLAN_ELTERN_1)
-        wlan_e2, _, _ = self._read_entity(CONF_WLAN_ELTERN_2)
-        ssid, _, _ = self._read_entity(CONF_SSID_SOURCE)
+        wlan_e1, wlan_e1_ts, _ = self._read_entity(CONF_WLAN_ELTERN_1)
+        wlan_e2, wlan_e2_ts, _ = self._read_entity(CONF_WLAN_ELTERN_2)
+        ssid, ssid_ts, _ = self._read_entity(CONF_SSID_SOURCE)
         home_ssids = self._ssid_set(CONF_HOME_SSIDS)
         parents_ssids = self._ssid_set(CONF_PARENTS_SSIDS)
-        prox_dist = self._read_float(CONF_PROXIMITY_DISTANCE)
-        prox_dir, _, _ = self._read_entity(CONF_PROXIMITY_DIRECTION)
+        prox_dist_raw, prox_dist_ts, _ = self._read_entity(CONF_PROXIMITY_DISTANCE)
+        prox_dist = _float_or_none(prox_dist_raw)
+        prox_dir, prox_dir_ts, _ = self._read_entity(CONF_PROXIMITY_DIRECTION)
 
         # --- presence_personal --------------------------------------------
         presence_personal = logic.compute_presence_personal(
@@ -280,6 +281,47 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
             near_r=self.near_radius, hysteresis_m=self.hysteresis_m,
             prev_band=prev_band,
         )
+
+        person_source_ts = _latest_datetime(
+            gps_primary_ts, gps_secondary_ts, wlan_benni_ts, wlan_e1_ts, wlan_e2_ts, ssid_ts
+        )
+        band_source_ts = prox_dist_ts if prox_dist is not None else person_source_ts
+        effective = logic.compute_effective_presence(
+            presence_personal=presence_personal,
+            home_band=presence_band,
+            distance_m=prox_dist,
+            direction=prox_dir,
+            now=now,
+            person_source_ts=person_source_ts,
+            band_source_ts=band_source_ts,
+            distance_ts=prox_dist_ts,
+            direction_ts=prox_dir_ts,
+            previous_distance_m=self._persistent.last_proximity_distance,
+            previous_effective=self._persistent.effective_presence,
+            previous_candidate=self._persistent.effective_candidate,
+            previous_candidate_started_at=_parse_iso(
+                self._persistent.effective_candidate_started
+            ),
+            last_home_at=_parse_iso(self._persistent.last_effective_home_at),
+            last_away_at=_parse_iso(self._persistent.last_effective_away_at),
+        )
+        self._persistent.effective_presence = effective.effective_presence
+        self._persistent.effective_candidate = effective.candidate_state
+        self._persistent.effective_candidate_started = (
+            effective.candidate_started_at.isoformat()
+            if effective.candidate_started_at else None
+        )
+        self._persistent.last_effective_home_at = (
+            effective.last_home_at.isoformat() if effective.last_home_at else None
+        )
+        self._persistent.last_effective_away_at = (
+            effective.last_away_at.isoformat() if effective.last_away_at else None
+        )
+        if prox_dist is not None:
+            self._persistent.last_proximity_distance = prox_dist
+            self._persistent.last_proximity_distance_at = (
+                prox_dist_ts.isoformat() if prox_dist_ts else now.isoformat()
+            )
 
         new_trans, trans_started = logic.compute_transition(
             prev_band=prev_band, new_band=presence_band,
@@ -408,6 +450,7 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
                 "started": self._persistent.transition_started,
                 "direction": prox_dir,
             },
+            "presence_effective": logic.effective_presence_attrs(effective),
             "preheat": {
                 "source": preheat_source,
                 "started": self._persistent.preheat_started,
@@ -454,6 +497,8 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
             presence_household=presence_household,
             presence_band=presence_band,
             presence_transition=new_trans,
+            presence_effective=effective.effective_presence,
+            presence_effective_transition=effective.transition,
             preheat_active=preheat_active,
             preheat_source=preheat_source,
             preheat_started=self._persistent.preheat_started,
@@ -471,6 +516,20 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
 def _parse_iso(raw: str | None) -> datetime | None:
     if not raw:
         return None
+
+
+def _float_or_none(raw: Any) -> float | None:
+    if raw in (None, "unknown", "unavailable", ""):
+        return None
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def _latest_datetime(*values: datetime | None) -> datetime | None:
+    present = [value for value in values if value is not None]
+    return max(present) if present else None
     try:
         return dt_util.parse_datetime(raw)
     except Exception:  # noqa: BLE001

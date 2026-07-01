@@ -3,6 +3,15 @@
 Alle nennenswerten Änderungen an dieser Integration. Neuester Eintrag oben.
 Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
+## [0.5.4] - 2026-07-01
+
+### Added
+- Policy-grade Presence-Arbitration als `presence_effective` und
+  `presence_effective_transition` mit States `home`, `away`, `arriving`,
+  `leaving`, `uncertain`, `stale`.
+- Debugattribute fuer Confidence, Source-Prioritaet, Proximity-Distanz/-Trend,
+  stale Inputs, Blockgrund sowie `last_home_at`/`last_away_at`.
+
 ## [0.5.3] - 2026-07-01
 
 ### Fixed

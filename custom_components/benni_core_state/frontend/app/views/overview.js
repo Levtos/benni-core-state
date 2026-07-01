@@ -6,6 +6,8 @@ const STATE_TILES = [
   ["presence_household", "Presence Household"],
   ["presence_band", "Presence Band"],
   ["presence_transition", "Presence Transition"],
+  ["presence_effective", "Presence Effective"],
+  ["presence_effective_transition", "Effective Transition"],
   ["bio_state", "Bio State"],
   ["day_state", "Day State"],
   ["day_context", "Day Context"],

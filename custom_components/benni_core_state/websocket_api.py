@@ -114,6 +114,8 @@ def _status(hass: HomeAssistant, coord) -> dict[str, Any]:
             "presence_household": data.presence_household,
             "presence_band": data.presence_band,
             "presence_transition": data.presence_transition,
+            "presence_effective": data.presence_effective,
+            "presence_effective_transition": data.presence_effective_transition,
             "bio_state": data.bio_state,
             "day_state": data.day_state,
             "day_context": data.day_context,

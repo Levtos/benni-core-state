@@ -21,6 +21,13 @@ class PersistentState:
     last_awake_start: str | None = None
     transition_state: str = "none"
     transition_started: str | None = None
+    effective_presence: str = "stale"
+    effective_candidate: str | None = None
+    effective_candidate_started: str | None = None
+    last_effective_home_at: str | None = None
+    last_effective_away_at: str | None = None
+    last_proximity_distance: float | None = None
+    last_proximity_distance_at: str | None = None
     preheat_active: bool = False
     preheat_source: str | None = None
     preheat_started: str | None = None
@@ -44,6 +51,8 @@ class ComputedState:
     presence_household: str
     presence_band: str
     presence_transition: str
+    presence_effective: str
+    presence_effective_transition: str
     preheat_active: bool
     preheat_source: str | None
     preheat_started: str | None
