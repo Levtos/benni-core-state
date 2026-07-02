@@ -58,6 +58,7 @@ from .const import (
     PERS_AWAY,
     PERS_HOME,
     PERS_PARENTS,
+    PRESENCE_PERSONAL_STATES,
     TRANS_COMING_HOME,
     TRANS_LEAVING_HOME,
     TRANS_NONE,
@@ -186,6 +187,7 @@ def compute_presence_personal(
     gps_secondary_ts: datetime | None,
     now: datetime,
     freshness_s: int,
+    prev_personal: str | None = None,
 ) -> str:
     """Decide ``zuhause`` / ``bei_eltern`` / ``abwesend``.
 
@@ -213,7 +215,14 @@ def compute_presence_personal(
     5. WLAN benni was ``home`` but went stale and *no* fresh GPS contradicts →
        hold ``zuhause`` (sleeping-phone guard). Structurally exclusive with the
        away override, which requires a fresh primary GPS.
-    6. Otherwise → ``abwesend``.
+    6. **Positive away:** a *fresh* GPS reading (primary or secondary) that
+       places Benni OUTSIDE the home zone is the *only* evidence that asserts
+       ``abwesend``. Absence of signal is never treated as away.
+    7. **No positive evidence** (HA just restarted, every tracker briefly
+       ``unavailable``, or all readings stale) → retain ``prev_personal``. This
+       stops an HA-restart from fabricating a false ``abwesend`` that tears down
+       away-gated consumers (media music, door). Falls back to ``abwesend`` only
+       when no presence has ever been observed (fresh install / empty store).
 
     SSID is *positive-only* evidence (see ``_ssid_matches``): an unknown network
     or a brief ``Not Connected`` blip during a 2.4/5 GHz band roam never asserts
@@ -263,6 +272,19 @@ def compute_presence_personal(
     if _is_home(wlan_benni) and not (fresh_primary or fresh_secondary):
         return PERS_HOME
 
+    # 6) Positive away: only a FRESH GPS reading outside the home zone asserts
+    # abwesend. (``gps_primary_fresh_away`` covers primary; the secondary is
+    # checked explicitly.) This is the sole away-evidence source.
+    if gps_primary_fresh_away or (fresh_secondary and not _is_home(gps_secondary)):
+        return PERS_AWAY
+
+    # 7) No positive evidence either way — every tracker is briefly unavailable
+    # (HA just restarted) or all readings are stale. Never fabricate an away
+    # event from the mere ABSENCE of signal: retain the last known presence so a
+    # restart cannot tear down away-gated consumers. Fall back to abwesend only
+    # when no presence has ever been observed yet.
+    if prev_personal in PRESENCE_PERSONAL_STATES:
+        return prev_personal
     return PERS_AWAY
 
 

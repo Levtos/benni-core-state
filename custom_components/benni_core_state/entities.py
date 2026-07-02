@@ -29,6 +29,7 @@ from .const import (
     DAY_STATES,
     DEFAULT_PROFILE,
     DOMAIN,
+    PERS_AWAY,
     PRESENCE_BAND_STATES,
     PRESENCE_EFFECTIVE_STATES,
     PRESENCE_HOUSEHOLD_STATES,
@@ -99,7 +100,10 @@ async def async_get_entities(
     if platform == Platform.SENSOR:
         return [BenniCoreStateSensor(coord, entry, desc) for desc in SENSORS]
     if platform == Platform.BINARY_SENSOR:
-        return [PreheatActiveBinarySensor(coord, entry)]
+        return [
+            PreheatActiveBinarySensor(coord, entry),
+            PresenceAwayBinarySensor(coord, entry),
+        ]
     return []
 
 
@@ -166,3 +170,44 @@ class PreheatActiveBinarySensor(
         if self.coordinator.data is None:
             return {}
         return self.coordinator.data.attrs.get("preheat", {})
+
+
+class PresenceAwayBinarySensor(
+    CoordinatorEntity[BenniCoreStateCoordinator], BinarySensorEntity
+):
+    """Canonical away gate for the whole fleet.
+
+    ``on`` ⇔ ``presence_personal == abwesend``. ``zuhause`` and ``bei_eltern``
+    both read ``off`` (bei_eltern is home-equivalent: no away-mode should fire).
+    Downstream modules (media, door, …) consume THIS instead of re-deriving
+    home/away from raw trackers — one owner of the presence decision.
+    """
+
+    # No device_class: the PRESENCE class would invert semantics (on=home),
+    # but this gate is on ⇔ away. Keep it a plain boolean.
+    _attr_has_entity_name = True
+    _attr_name = "Presence Away"
+
+    def __init__(
+        self, coordinator: BenniCoreStateCoordinator, entry: ConfigEntry
+    ) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = unique_id(entry.entry_id, "presence_away")
+        self._attr_device_info = _device_info(entry)
+
+    @property
+    def is_on(self) -> bool:
+        if self.coordinator.data is None:
+            return False
+        return self.coordinator.data.presence_personal == PERS_AWAY
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        if self.coordinator.data is None:
+            return {}
+        return self.coordinator.data.attrs.get("presence_personal", {})
+
+    @property
+    def available(self) -> bool:
+        # Mirror the presence sensors: stay available on documented defaults.
+        return self.coordinator.last_update_success or self.coordinator.data is not None

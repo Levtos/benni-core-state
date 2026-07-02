@@ -188,6 +188,54 @@ def test_abwesend_when_nothing_known():
     assert _personal() == PERS_AWAY
 
 
+# --- restart retain (FLEET: HA-restart must not fabricate abwesend) --------
+
+
+def test_no_signal_retains_prev_home_across_restart():
+    # On an HA restart every tracker is briefly unavailable. Without a fresh
+    # GPS-away reading we must retain the last known presence, NOT flip to
+    # abwesend (which would tear down away-gated media / door consumers).
+    assert _personal(prev_personal=PERS_HOME) == PERS_HOME
+
+
+def test_no_signal_retains_prev_bei_eltern_across_restart():
+    assert _personal(prev_personal=PERS_PARENTS) == PERS_PARENTS
+
+
+def test_no_signal_without_prior_still_abwesend():
+    # Fresh install / empty store: no prior observation → documented default.
+    assert _personal(prev_personal=None) == PERS_AWAY
+
+
+def test_fresh_away_gps_beats_retained_home():
+    # Retain never masks POSITIVE away evidence: a fresh primary GPS outside
+    # the home zone still asserts abwesend even if the last state was home.
+    assert (
+        _personal(
+            prev_personal=PERS_HOME,
+            gps_primary="not_home",
+            gps_primary_ts=FRESH_TS,
+        )
+        == PERS_AWAY
+    )
+
+
+def test_fresh_secondary_away_gps_beats_retained_home():
+    assert (
+        _personal(
+            prev_personal=PERS_HOME,
+            gps_secondary="not_home",
+            gps_secondary_ts=FRESH_TS,
+        )
+        == PERS_AWAY
+    )
+
+
+def test_home_ssid_still_wins_over_retained_away():
+    # Positive home evidence also overrides a retained abwesend immediately.
+    assert _personal(prev_personal=PERS_AWAY, ssid="Einhornaufzuchtsfarm") == PERS_HOME
+
+
 # --- bei_eltern is home-equivalent (household) ----------------------------
 
 
