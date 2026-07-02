@@ -3,6 +3,28 @@
 Alle nennenswerten Änderungen an dieser Integration. Neuester Eintrag oben.
 Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
+## [0.6.0] - 2026-07-02
+
+### Fixed
+- **HA-Restart darf keine Abwesenheit mehr erfinden.** `presence_personal` fiel
+  beim Neustart kurz auf `abwesend`, weil alle Tracker im Boot-Fenster
+  `unavailable` sind und die alte Fallback-Regel „nichts bekannt → abwesend"
+  griff. Jeder Restart riss so away-gegatete Konsumenten ab (Media-Musik
+  stoppte + startete Radio neu). `abwesend` erfordert jetzt **positive
+  Evidenz** — ein *frisches* GPS außerhalb der Home-Zone. Ohne positive Evidenz
+  (Boot / alle Signale stale) wird der letzte bekannte Zustand **retained**
+  (`last_presence_personal`, restart-persistent). Fallback auf `abwesend` nur
+  noch bei fabrikneuer Instanz ohne je beobachtete Presence.
+
+### Added
+- Kanonische Fleet-Gate-Entität `binary_sensor.benni_core_state_away`
+  (`on` ⇔ `abwesend`; `zuhause`/`bei_eltern` ⇒ `off`). Downstream-Module lesen
+  DIESE Entscheidung statt home/away aus Roh-Trackern neu abzuleiten — ein
+  Owner der Presence-Semantik.
+
+### Internal
+- Toten, unerreichbaren Code in `_latest_datetime` entfernt (Ruff F821).
+
 ## [0.5.4] - 2026-07-01
 
 ### Added

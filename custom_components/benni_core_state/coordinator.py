@@ -267,7 +267,11 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
             gps_primary=gps_primary, gps_primary_ts=gps_primary_ts,
             gps_secondary=gps_secondary, gps_secondary_ts=gps_secondary_ts,
             now=now, freshness_s=self.tracker_freshness,
+            prev_personal=self._persistent.last_presence_personal,
         )
+        # Retain the decided value across restarts (rule 7 reads it back on the
+        # first post-boot compute, before trackers have restored).
+        self._persistent.last_presence_personal = presence_personal
 
         external_occupied = self._read_bool(CONF_HOUSEHOLD_SOURCE)
         presence_household = logic.compute_presence_household(
@@ -530,10 +534,6 @@ def _float_or_none(raw: Any) -> float | None:
 def _latest_datetime(*values: datetime | None) -> datetime | None:
     present = [value for value in values if value is not None]
     return max(present) if present else None
-    try:
-        return dt_util.parse_datetime(raw)
-    except Exception:  # noqa: BLE001
-        return None
 
 
 def _parse_local_datetime(raw: Any, local_now: datetime) -> datetime | None:

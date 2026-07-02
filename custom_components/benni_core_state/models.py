@@ -22,6 +22,9 @@ class PersistentState:
     transition_state: str = "none"
     transition_started: str | None = None
     effective_presence: str = "stale"
+    # Last decided presence_personal (incl. bei_eltern), retained across a
+    # restart so a boot-time signal gap does not fabricate a false abwesend.
+    last_presence_personal: str | None = None
     effective_candidate: str | None = None
     effective_candidate_started: str | None = None
     last_effective_home_at: str | None = None
