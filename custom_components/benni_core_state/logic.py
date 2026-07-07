@@ -17,9 +17,13 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 from .const import (
+    ACT_ENTERTAINMENT,
     ACT_FREE_TIME,
+    ACT_GAMING,
     ACT_HOUSEHOLD,
     ACT_IDLE,
+    ACT_MUSIC,
+    ACT_PC_ACTIVE,
     ACT_PRIVATE,
     ACT_SLEEP,
     ACT_WAKING,
@@ -908,6 +912,10 @@ def compute_day_context(local_now: datetime, holiday: bool) -> str:
 # --------------------------------------------------------- activity
 
 
+_IDLE_MEDIA_CONTEXTS = ("idle", "none", "off")
+_ENTERTAINMENT_MEDIA_CONTEXTS = ("tv", "streaming")
+
+
 def compute_activity(
     *,
     bio: str,
@@ -918,11 +926,28 @@ def compute_activity(
     private_active: bool,
     household_active: bool,
     media_context: str | None,
+    stash_streams: int = 0,
+    gaming_platform: str | None = None,
+    entertainment_active: bool = False,
+    music_active: bool = False,
+    pc_active: bool = False,
 ) -> str:
-    """Pick the single dominant activity bucket.
+    """Pick the single dominant activity bucket (Activity v1 / PR2).
 
-    Order matters: sleep > waking > private > work > household > free_time > idle.
-    TV / gaming / cinema etc. live in ``media_context`` (attribute), not here.
+    First match wins, in this order:
+
+        sleep > waking > private_time > gaming > entertainment > music
+              > work_home > household > pc_active > free_time > idle
+
+    Contract change vs v0: the old ``media_context != idle → free_time`` collapse
+    is replaced by real buckets. Audio-only (HomePods/Denon) never reaches
+    ``media_context`` (media_state classifies it as ``idle`` / ``audio_only_idle``),
+    so ``music`` is driven by the raw player signals via ``music_active``.
+
+    ``work_home`` stays inert until a *real* homeoffice indicator is bound — PC
+    activity alone is ``pc_active``, never faked into ``work_home``. Presence /
+    transition (away / bei_eltern / coming_home) are intentionally NOT activity
+    values; they live in Presence and, later, in ``live_status``.
     """
     if bio == BIO_SLEEP:
         return ACT_SLEEP
@@ -932,13 +957,32 @@ def compute_activity(
     if bio != BIO_AWAKE:
         return ACT_IDLE
 
-    if private_active:
+    media = (media_context or "").strip().lower()
+    platform = (gaming_platform or "").strip().lower()
+
+    # 4) private_time — höchste awake-Priorität (Stash / expliziter Kontext / Flag).
+    if private_active or media == ACT_PRIVATE or stash_streams > 0:
         return ACT_PRIVATE
+    # 5) gaming — Screen-Spiel schlägt passives TV/Streaming/Audio.
+    if media == ACT_GAMING or (platform and platform not in ("none", "")):
+        return ACT_GAMING
+    # 6) entertainment — TV/Streaming (media_context) oder das media_state-Binary.
+    if media in _ENTERTAINMENT_MEDIA_CONTEXTS or entertainment_active:
+        return ACT_ENTERTAINMENT
+    # 7) music — reines Audio aus den Roh-Playern (HomePods playing / Denon aktiv).
+    if music_active:
+        return ACT_MUSIC
+    # 8) work_home — nur mit echtem Indikator, werktags, zuhause.
     if homeoffice and presence_personal == PERS_HOME and day_context == DC_WERKTAG:
         return ACT_WORK_HOME
+    # 9) household.
     if household_active:
         return ACT_HOUSEHOLD
-    if media_context and media_context not in ("idle", "none", "off"):
+    # 10) pc_active — PC an, aber kein stärkerer Kontext erkannt.
+    if pc_active:
+        return ACT_PC_ACTIVE
+    # 11) free_time — Rest-Nicht-Idle-media_context (zukunftssicher).
+    if media and media not in _IDLE_MEDIA_CONTEXTS:
         return ACT_FREE_TIME
 
     return ACT_IDLE

@@ -32,16 +32,21 @@ from homeassistant.util import dt as dt_util
 from . import logic
 from .const import (
     CONF_COFFEE_ACTIVE,
+    CONF_DENON_ACTIVE,
     CONF_DOOR_WAKE,
+    CONF_ENTERTAINMENT_ACTIVE,
+    CONF_GAMING_PLATFORM,
     CONF_GPS_PRIMARY,
     CONF_GPS_SECONDARY,
     CONF_HOLIDAY_SENSOR,
     CONF_HOMEOFFICE_PING,
+    CONF_HOMEPODS_PLAYER,
     CONF_HOME_RADIUS,
     CONF_HOME_SSIDS,
     CONF_HOUSEHOLD_SOURCE,
     CONF_HYSTERESIS_M,
     CONF_MEDIA_CONTEXT,
+    CONF_MEDIA_DEVICE,
     CONF_PARENTS_SSIDS,
     CONF_NEAR_RADIUS,
     CONF_PC_ACTIVE,
@@ -53,6 +58,7 @@ from .const import (
     CONF_PS5_ACTIVE,
     CONF_SOLAR_NOON,
     CONF_SSID_SOURCE,
+    CONF_STASH_STREAMS,
     CONF_TRACKER_FRESHNESS,
     CONF_TRANSITION_HOLD,
     CONF_WAKE_NEEDED,
@@ -178,6 +184,9 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
             CONF_PC_ACTIVE, CONF_PS5_ACTIVE, CONF_COFFEE_ACTIVE, CONF_DOOR_WAKE,
             CONF_MEDIA_CONTEXT, CONF_PRIVATE_SOURCE, CONF_HOMEOFFICE_PING,
             CONF_HOLIDAY_SENSOR, CONF_HOUSEHOLD_SOURCE, CONF_SOLAR_NOON,
+            # Activity v1 (PR2) inputs.
+            CONF_HOMEPODS_PLAYER, CONF_DENON_ACTIVE, CONF_ENTERTAINMENT_ACTIVE,
+            CONF_GAMING_PLATFORM, CONF_MEDIA_DEVICE, CONF_STASH_STREAMS,
         ]
         ids: list[str] = []
         for k in keys:
@@ -240,6 +249,16 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
         if val is None:
             return False
         return str(val).lower() in ("on", "true", "home", "1", "yes", "active")
+
+    def _read_int(self, key: str) -> int:
+        """Robuster Int-Read: unknown/unavailable/none/leer → 0 (z.B. Stash-Streams)."""
+        val, _, _ = self._read_entity(key)
+        if val is None or str(val).strip().lower() in ("unknown", "unavailable", "none", ""):
+            return 0
+        try:
+            return int(float(val))
+        except (TypeError, ValueError):
+            return 0
 
     # --------------------------------------------------------------- compute
 
@@ -413,11 +432,26 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
         media_ctx, _, _ = self._read_entity(CONF_MEDIA_CONTEXT)
         private_active = self._read_bool(CONF_PRIVATE_SOURCE)
         homeoffice = self._read_bool(CONF_HOMEOFFICE_PING)
+        # Activity v1 (PR2): lokale Aktivitäts-Signale.
+        # HomePods-Player meldet "playing"/"paused"/"idle" — NUR "playing" ist Musik;
+        # _read_bool kennt "playing" nicht, daher explizit prüfen. Denon-Master liefert
+        # "active"/"off" → _read_bool passt. Stash-Streams als robuster Int (>0 = privat).
+        homepods_state, _, _ = self._read_entity(CONF_HOMEPODS_PLAYER)
+        denon_active = self._read_bool(CONF_DENON_ACTIVE)
+        music_active = homepods_state == "playing" or denon_active
+        pc_active = self._read_bool(CONF_PC_ACTIVE)
+        entertainment_active = self._read_bool(CONF_ENTERTAINMENT_ACTIVE)
+        gaming_platform, _, _ = self._read_entity(CONF_GAMING_PLATFORM)
+        media_device, _, _ = self._read_entity(CONF_MEDIA_DEVICE)
+        stash_streams = self._read_int(CONF_STASH_STREAMS)
         activity = logic.compute_activity(
             bio=new_bio, presence_personal=presence_personal,
             day_context=day_context, day_state=day_state,
             homeoffice=homeoffice, private_active=private_active,
             household_active=external_occupied, media_context=media_ctx,
+            stash_streams=stash_streams, gaming_platform=gaming_platform,
+            entertainment_active=entertainment_active, music_active=music_active,
+            pc_active=pc_active,
         )
 
         master = ".".join(
@@ -483,9 +517,24 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
             },
             "activity_state": {
                 "media_context": media_ctx,
-                "homeoffice": homeoffice,
+                "media_device": media_device,
+                "gaming_platform": gaming_platform,
+                "entertainment_active": entertainment_active,
+                "music_active": music_active,
+                "pc_active": pc_active,
                 "private": private_active,
+                "stash_streams": stash_streams,
                 "household": external_occupied,
+                "homeoffice": homeoffice,
+                "activity_reason": _activity_reason(
+                    activity,
+                    media_context=media_ctx,
+                    stash_streams=stash_streams,
+                    gaming_platform=gaming_platform,
+                    entertainment_active=entertainment_active,
+                    homepods_playing=homepods_state == "playing",
+                    denon_active=denon_active,
+                ),
             },
             "master_context": {
                 "presence": presence_personal,
@@ -525,6 +574,47 @@ def _parse_iso(raw: str | None) -> datetime | None:
     # crashing the compute step. Preserving the tz-aware datetime is what keeps
     # the preheat / transition / effective-presence stabilization timers honest.
     return dt_util.parse_datetime(raw)
+
+
+def _activity_reason(
+    activity: str,
+    *,
+    media_context: str | None,
+    stash_streams: int,
+    gaming_platform: str | None,
+    entertainment_active: bool,
+    homepods_playing: bool,
+    denon_active: bool,
+) -> str:
+    """Diagnose-Begründung für den gewählten Activity-Bucket (nur Attribut).
+
+    Post-hoc aus dem Ergebnis + Roh-Signalen abgeleitet — spiegelt die
+    Prioritätsordnung von ``compute_activity`` wider, entscheidet aber nichts.
+    """
+    media = (media_context or "").strip().lower()
+    if activity in ("sleep", "waking", "idle"):
+        return f"bio:{activity}" if activity != "idle" else "idle"
+    if activity == "private_time":
+        if stash_streams > 0:
+            return "private:stash_streams"
+        if media == "private_time":
+            return "private:media_context"
+        return "private:flag"
+    if activity == "gaming":
+        return "gaming:media_context" if media == "gaming" else f"gaming:platform_{gaming_platform}"
+    if activity == "entertainment":
+        return f"entertainment:{media}" if media in ("tv", "streaming") else "entertainment:active_flag"
+    if activity == "music":
+        return "music:homepods" if homepods_playing else "music:denon"
+    if activity == "work_home":
+        return "work_home:homeoffice"
+    if activity == "household":
+        return "household:source"
+    if activity == "pc_active":
+        return "pc_active:pc"
+    if activity == "free_time":
+        return f"free_time:{media}"
+    return activity
 
 
 def _float_or_none(raw: Any) -> float | None:
