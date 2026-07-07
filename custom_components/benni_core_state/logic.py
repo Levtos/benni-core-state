@@ -18,7 +18,6 @@ from datetime import datetime, timedelta
 
 from .const import (
     ACT_ENTERTAINMENT,
-    ACT_FREE_TIME,
     ACT_GAMING,
     ACT_HOUSEHOLD,
     ACT_IDLE,
@@ -915,8 +914,23 @@ def compute_day_context(local_now: datetime, holiday: bool) -> str:
 # --------------------------------------------------------- activity
 
 
-_IDLE_MEDIA_CONTEXTS = ("idle", "none", "off")
-_ENTERTAINMENT_MEDIA_CONTEXTS = ("tv", "streaming")
+# Media-Feed-States (benni_media_state activity_context) → Core-Media-Bucket.
+# 1:1; alles andere (idle/none/unknown/unavailable/leer) → KEIN Media-Bucket.
+_MEDIA_FEED_BUCKETS = frozenset(
+    {ACT_PRIVATE, ACT_GAMING, ACT_ENTERTAINMENT, ACT_MUSIC}
+)
+
+
+def media_bucket_from_feed(media_activity: str | None) -> str | None:
+    """Media-State-Feed-State → Core-Media-Bucket (oder ``None``).
+
+    Reine Projektion des externen Feeds (``sensor.*_media_state_activity_context``)
+    auf die vier Media-Buckets. KEINE eigene Media-Detektion, KEIN Roh-Fallback:
+    ``idle``/``none``/``unknown``/``unavailable``/fehlend → ``None`` (kein Bucket).
+    media_state ist Owner der Media-Wahrheit (FLEET-256).
+    """
+    v = (media_activity or "").strip().lower()
+    return v if v in _MEDIA_FEED_BUCKETS else None
 
 
 def compute_activity(
@@ -928,24 +942,28 @@ def compute_activity(
     homeoffice: bool,
     private_active: bool,
     household_active: bool,
-    media_context: str | None,
-    stash_streams: int = 0,
-    gaming_platform: str | None = None,
-    entertainment_active: bool = False,
-    music_active: bool = False,
+    media_activity: str | None = None,
     pc_active: bool = False,
 ) -> str:
-    """Pick the single dominant activity bucket (Activity v1 / PR2).
+    """Pick the single dominant activity bucket (Activity v2 / PR2, FLEET-256).
 
     First match wins, in this order:
 
         sleep > waking > private_time > gaming > entertainment > music
-              > work_home > household > pc_active > free_time > idle
+              > work_home > household > pc_active > idle
 
-    Contract change vs v0: the old ``media_context != idle → free_time`` collapse
-    is replaced by real buckets. Audio-only (HomePods/Denon) never reaches
-    ``media_context`` (media_state classifies it as ``idle`` / ``audio_only_idle``),
-    so ``music`` is driven by the raw player signals via ``music_active``.
+    Contract change vs v1: the Media half now comes from a SINGLE media_state
+    feed (``media_activity`` = ``private_time``/``gaming``/``entertainment``/
+    ``music``/``idle``) instead of Core re-reading raw HomePods/Denon/Stash
+    signals. media_state owns the Media truth; Core stays the global arbiter and
+    only maps the feed bucket into its full priority. A missing/``unknown``/
+    ``unavailable``/``idle`` feed yields no Media bucket — there is intentionally
+    NO raw fallback (that would reintroduce the double-detection). The former
+    residual ``free_time`` bucket is unreachable now (the feed is a closed enum)
+    and no longer produced.
+
+    ``private_active`` is a Core-local, non-Media manual private source
+    (``CONF_PRIVATE_SOURCE``) and is kept as an OR into ``private_time``.
 
     ``work_home`` stays inert until a *real* homeoffice indicator is bound — PC
     activity alone is ``pc_active``, never faked into ``work_home``. Presence /
@@ -960,20 +978,19 @@ def compute_activity(
     if bio != BIO_AWAKE:
         return ACT_IDLE
 
-    media = (media_context or "").strip().lower()
-    platform = (gaming_platform or "").strip().lower()
+    media_bucket = media_bucket_from_feed(media_activity)
 
-    # 4) private_time — höchste awake-Priorität (Stash / expliziter Kontext / Flag).
-    if private_active or media == ACT_PRIVATE or stash_streams > 0:
+    # 4) private_time — höchste awake-Priorität (Feed ODER lokaler Manual-Flag).
+    if private_active or media_bucket == ACT_PRIVATE:
         return ACT_PRIVATE
-    # 5) gaming — Screen-Spiel schlägt passives TV/Streaming/Audio.
-    if media == ACT_GAMING or (platform and platform not in ("none", "")):
+    # 5) gaming — Screen-Spiel schlägt passives TV/Streaming/Audio (aus Feed).
+    if media_bucket == ACT_GAMING:
         return ACT_GAMING
-    # 6) entertainment — TV/Streaming (media_context) oder das media_state-Binary.
-    if media in _ENTERTAINMENT_MEDIA_CONTEXTS or entertainment_active:
+    # 6) entertainment — TV/Streaming aus dem Feed.
+    if media_bucket == ACT_ENTERTAINMENT:
         return ACT_ENTERTAINMENT
-    # 7) music — reines Audio aus den Roh-Playern (HomePods playing / Denon aktiv).
-    if music_active:
+    # 7) music — reines Audio, im Feed als music (media_context bleibt idle).
+    if media_bucket == ACT_MUSIC:
         return ACT_MUSIC
     # 8) work_home — nur mit echtem Indikator, werktags, zuhause.
     if homeoffice and presence_personal == PERS_HOME and day_context == DC_WERKTAG:
@@ -981,12 +998,9 @@ def compute_activity(
     # 9) household.
     if household_active:
         return ACT_HOUSEHOLD
-    # 10) pc_active — PC an, aber kein stärkerer Kontext erkannt.
+    # 10) pc_active — PC an (lokaler Anker), aber kein stärkerer Kontext.
     if pc_active:
         return ACT_PC_ACTIVE
-    # 11) free_time — Rest-Nicht-Idle-media_context (zukunftssicher).
-    if media and media not in _IDLE_MEDIA_CONTEXTS:
-        return ACT_FREE_TIME
 
     return ACT_IDLE
 

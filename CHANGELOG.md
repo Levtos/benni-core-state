@@ -3,6 +3,42 @@
 Alle nennenswerten Änderungen an dieser Integration. Neuester Eintrag oben.
 Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
+## [0.9.0] - 2026-07-07
+
+### Changed
+- **Media-Aktivität kommt jetzt aus EINEM media_state-Feed** statt aus
+  Roh-Signalen. Core State konsumiert
+  `sensor.system_benni_media_state_activity_context` (benni_media_state v0.12.0,
+  FLEET-255) als Media-Hälfte des Activity-States (`private_time`/`gaming`/
+  `entertainment`/`music`/`idle`). Core State bleibt Gesamt-Kontext-Arbiter und
+  mappt den Feed-Bucket in seine volle Priorität (sleep > waking > private_time >
+  gaming > entertainment > music > work_home > household > pc_active > idle).
+- **Direkte Media-Roh-Reads entfernt** aus der Activity-Berechnung: HomePods
+  Player (`homepods_player`), Denon Master (`denon_active`) und Stash Streams
+  (`stash_streams`). Die zugehörigen Config-Slots `CONF_HOMEPODS_PLAYER`,
+  `CONF_DENON_ACTIVE`, `CONF_STASH_STREAMS` sind entfernt. Kein Roh-Fallback —
+  media_state ist Owner der Media-Wahrheit (keine Doppel-Detektion mehr).
+- **`sensor.benni_master_pc` bleibt** ein Core-State-lokaler Anker (PC ist auch
+  Anwesenheits-/Wake-Indikator, kein reines Media).
+- Fehlt/`unavailable`/`unknown`/`idle`-Feed → kein Media-Bucket (kein Crash,
+  kein Roh-Fallback).
+
+### Added
+- Neue `activity_state`-Attribute: `media_activity_context`,
+  `media_activity_reason`, `media_activity_hold_strength`, `media_activity_source`,
+  `media_activity_context_available` sowie optional `title`/`artist`/`game_title`/
+  `source_app` (aus dem Feed). Der Feed erscheint auch als Panel-Binding
+  „Media-Activity-Feed".
+
+### Unchanged
+- **`presence_personal` unverändert** (roher Owner).
+- **Presence-Effective Activity-Hold-Contract unverändert**: `music`/
+  `entertainment` = soft (brechen bei bestätigtem Far-Away), `private_time`/
+  `gaming` = hard, `pc_active`/`household` = mid; Away-Gate-Semantik unverändert.
+- Bestehende Debug-Slots `media_context`/`media_device`/`gaming_platform`/
+  `entertainment_active` bleiben als Observability-Echo (treiben die
+  Entscheidung nicht mehr).
+
 ## [0.8.0] - 2026-07-07
 
 ### Added
