@@ -520,6 +520,11 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
 def _parse_iso(raw: str | None) -> datetime | None:
     if not raw:
         return None
+    # dt_util.parse_datetime returns None on unparseable input (never raises),
+    # so a garbage persisted value degrades to "no timestamp" instead of
+    # crashing the compute step. Preserving the tz-aware datetime is what keeps
+    # the preheat / transition / effective-presence stabilization timers honest.
+    return dt_util.parse_datetime(raw)
 
 
 def _float_or_none(raw: Any) -> float | None:

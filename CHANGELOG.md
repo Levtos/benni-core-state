@@ -3,6 +3,18 @@
 Alle nennenswerten Änderungen an dieser Integration. Neuester Eintrag oben.
 Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
+## [0.6.1] - 2026-07-07
+
+### Fixed
+- **Persistierte ISO-Zeitstempel gehen nicht mehr verloren.** `_parse_iso()` im
+  Coordinator hatte keinen Return für den Nicht-Leer-Fall und lieferte dadurch
+  für *jeden* gültigen ISO-String implizit `None`. Damit rechneten alle
+  zeitstempel-basierten Timer dauerhaft „gerade erst gestartet": Preheat-Cap,
+  Transition-Hold, Effective-Presence-Stabilisierung sowie das Sleep-/
+  Awake-Tracking (`last_awake_start` klebte am Jetzt statt am echten Beginn).
+  `_parse_iso()` gibt jetzt das geparste (tz-bewusste) `datetime` zurück und
+  fällt bei leeren/ungültigen Werten sauber auf `None` zurück (kein Raise).
+
 ## [0.6.0] - 2026-07-02
 
 ### Fixed
