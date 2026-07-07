@@ -3,6 +3,39 @@
 Alle nennenswerten Änderungen an dieser Integration. Neuester Eintrag oben.
 Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
+## [0.7.0] - 2026-07-07
+
+### Added
+- **Activity State v1 — echte lokale Aktivität statt „fast immer `idle`".**
+  `sensor.benni_core_state_activity_state` kennt jetzt die Buckets `gaming`,
+  `entertainment`, `music` und `pc_active` zusätzlich zu den bestehenden
+  (`sleep`, `waking`, `idle`, `free_time`, `work_home`, `private_time`,
+  `household`). `away`/`bei_eltern`/`coming_home` bleiben bewusst **draußen** —
+  das ist Presence/Transition und gehört später in `live_status`.
+- **Neue optionale Input-Slots** (Benni-Prefill): HomePods-Player
+  (`media_player.living_homepods_ma_group`), Denon-Master
+  (`sensor.benni_master_denon`), Entertainment-Binary
+  (`binary_sensor.benni_media_state_entertainment_active`), Media-Device und
+  Gaming-Platform (media_state) sowie Stash-Streams
+  (`sensor.stash_active_streams`, `>0` ⇒ `private_time`).
+- **`music` aus Roh-Playern:** HomePods-`playing` bzw. Denon-`active` — weil
+  media_state reines Audio bewusst als `idle` (`audio_only_idle`) klassifiziert.
+  HomePods wird explizit auf `state == "playing"` geprüft (nicht `_read_bool`).
+- Reichere `activity_state`-Attribute: `media_context`, `media_device`,
+  `gaming_platform`, `entertainment_active`, `music_active`, `pc_active`,
+  `private`, `stash_streams`, `household`, `homeoffice`, `activity_reason`.
+
+### Changed
+- **Contract-Semantik:** die alte Regel „`media_context != idle` → `free_time`"
+  ist ersetzt. TV/Streaming → `entertainment`, `gaming` → `gaming`,
+  `private_time` → `private_time`; `free_time` ist nur noch Rest-Fallback für
+  sonstige Nicht-Idle-Kontexte. Konsumenten, die `free_time` als „irgendwas läuft"
+  lasen, sehen jetzt spezifischere Werte.
+- **`work_home` bleibt inert ohne echten Homeoffice-Indikator** — PC-Aktivität
+  wird zu `pc_active`, niemals zu gefaktem `work_home`. Priorität (erster Treffer):
+  `sleep > waking > private_time > gaming > entertainment > music > work_home >
+  household > pc_active > free_time > idle`.
+
 ## [0.6.1] - 2026-07-07
 
 ### Fixed
