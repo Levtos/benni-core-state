@@ -25,7 +25,6 @@ from homeassistant.helpers import selector
 
 from .const import (
     CONF_COFFEE_ACTIVE,
-    CONF_DENON_ACTIVE,
     CONF_DOOR_WAKE,
     CONF_ENTERTAINMENT_ACTIVE,
     CONF_GAMING_PLATFORM,
@@ -33,11 +32,11 @@ from .const import (
     CONF_GPS_SECONDARY,
     CONF_HOLIDAY_SENSOR,
     CONF_HOMEOFFICE_PING,
-    CONF_HOMEPODS_PLAYER,
     CONF_HOME_RADIUS,
     CONF_HOME_SSIDS,
     CONF_HOUSEHOLD_SOURCE,
     CONF_HYSTERESIS_M,
+    CONF_MEDIA_ACTIVITY_CONTEXT,
     CONF_MEDIA_CONTEXT,
     CONF_MEDIA_DEVICE,
     CONF_NEAR_RADIUS,
@@ -51,7 +50,6 @@ from .const import (
     CONF_PS5_ACTIVE,
     CONF_SOLAR_NOON,
     CONF_SSID_SOURCE,
-    CONF_STASH_STREAMS,
     CONF_TRACKER_FRESHNESS,
     CONF_TRANSITION_HOLD,
     CONF_WAKE_NEEDED,
@@ -118,13 +116,13 @@ _ENTITY_SLOTS: tuple[tuple[str, list[str]], ...] = (
     (CONF_HOLIDAY_SENSOR, ["binary_sensor", "calendar", "input_boolean"]),
     (CONF_HOUSEHOLD_SOURCE, ["binary_sensor", "input_boolean"]),
     (CONF_SOLAR_NOON, ["sensor"]),
-    # Activity v1 (PR2): lokale Aktivitäts-Signale.
-    (CONF_HOMEPODS_PLAYER, ["media_player"]),
-    (CONF_DENON_ACTIVE, ["sensor", "binary_sensor", "switch"]),
+    # Activity v2 (PR2 / FLEET-256): der media_state-Feed liefert die
+    # Media-Hälfte (State = Media-Bucket). Kein Roh-HomePods/Denon/Stash mehr.
+    (CONF_MEDIA_ACTIVITY_CONTEXT, ["sensor"]),
+    # Debug-/Attribut-Echo (treiben die Entscheidung nicht mehr):
     (CONF_ENTERTAINMENT_ACTIVE, ["binary_sensor", "input_boolean"]),
     (CONF_MEDIA_DEVICE, ["sensor"]),
     (CONF_GAMING_PLATFORM, ["sensor"]),
-    (CONF_STASH_STREAMS, ["sensor", "input_number"]),
 )
 
 

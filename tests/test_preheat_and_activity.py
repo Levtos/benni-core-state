@@ -6,7 +6,6 @@ from datetime import datetime, timedelta, timezone
 from custom_components.benni_core_state import logic
 from custom_components.benni_core_state.const import (
     ACT_ENTERTAINMENT,
-    ACT_FREE_TIME,
     ACT_GAMING,
     ACT_HOUSEHOLD,
     ACT_IDLE,
@@ -90,11 +89,7 @@ def _activity(**over):
         homeoffice=False,
         private_active=False,
         household_active=False,
-        media_context=None,
-        stash_streams=0,
-        gaming_platform=None,
-        entertainment_active=False,
-        music_active=False,
+        media_activity=None,
         pc_active=False,
     )
     base.update(over)
@@ -106,82 +101,108 @@ def _activity(**over):
 
 def test_activity_sleep_beats_everything():
     assert _activity(
-        bio=BIO_SLEEP, media_context="gaming", music_active=True, pc_active=True
+        bio=BIO_SLEEP, media_activity="gaming", pc_active=True
     ) == ACT_SLEEP
 
 
 def test_activity_waking_beats_everything_but_sleep():
     assert _activity(
-        bio=BIO_WAKING, media_context="gaming", pc_active=True
+        bio=BIO_WAKING, media_activity="gaming", pc_active=True
     ) == ACT_WAKING
 
 
-# --- private_time ---------------------------------------------------------
+# --- media feed mapping (PR2 / FLEET-256) ---------------------------------
 
 
-def test_private_from_media_context():
-    assert _activity(media_context="private_time") == ACT_PRIVATE
+def test_feed_music_maps_to_music():
+    assert _activity(media_activity="music") == ACT_MUSIC
 
 
-def test_private_from_stash_streams():
-    assert _activity(stash_streams=2) == ACT_PRIVATE
+def test_feed_entertainment_maps_to_entertainment():
+    assert _activity(media_activity="entertainment") == ACT_ENTERTAINMENT
 
 
-def test_private_beats_gaming_music_pc():
-    assert _activity(
-        stash_streams=1, media_context="gaming", music_active=True, pc_active=True
-    ) == ACT_PRIVATE
+def test_feed_gaming_maps_to_gaming():
+    assert _activity(media_activity="gaming") == ACT_GAMING
 
 
-# --- gaming ---------------------------------------------------------------
+def test_feed_private_maps_to_private():
+    assert _activity(media_activity="private_time") == ACT_PRIVATE
 
 
-def test_gaming_from_media_context():
-    assert _activity(media_context="gaming") == ACT_GAMING
+def test_feed_idle_yields_no_media_bucket():
+    # idle-Feed → kein Media-Bucket → Kernlogik entscheidet (idle bzw. pc_active).
+    assert _activity(media_activity="idle") == ACT_IDLE
+    assert _activity(media_activity="idle", pc_active=True) == ACT_PC_ACTIVE
 
 
-def test_gaming_from_platform():
-    assert _activity(gaming_platform="ps5") == ACT_GAMING
+def test_media_bucket_from_feed_projection():
+    assert logic.media_bucket_from_feed("music") == ACT_MUSIC
+    assert logic.media_bucket_from_feed("GAMING ") == ACT_GAMING
+    assert logic.media_bucket_from_feed("private_time") == ACT_PRIVATE
+    assert logic.media_bucket_from_feed("idle") is None
+    assert logic.media_bucket_from_feed(None) is None
+    assert logic.media_bucket_from_feed("unavailable") is None
 
 
-def test_gaming_platform_none_is_not_gaming():
-    assert _activity(gaming_platform="none", pc_active=True) == ACT_PC_ACTIVE
+# --- priority interleaving ------------------------------------------------
+# Der Feed ist EIN-wertig (private_time > gaming > entertainment > music wird in
+# media_state entschieden). Auf Core-Ebene wird nur die Media-Hälfte gegen die
+# lokalen Buckets (private_active-Flag, work_home, household, pc_active)
+# arbitriert — in genau dieser Reihenfolge.
 
 
-# --- entertainment --------------------------------------------------------
+def test_local_private_flag_beats_feed_gaming():
+    assert _activity(private_active=True, media_activity="gaming", pc_active=True) == ACT_PRIVATE
 
 
-def test_entertainment_from_tv():
-    assert _activity(media_context="tv") == ACT_ENTERTAINMENT
+def test_feed_gaming_beats_work_home():
+    assert _activity(media_activity="gaming", homeoffice=True) == ACT_GAMING
 
 
-def test_entertainment_from_streaming():
-    assert _activity(media_context="streaming") == ACT_ENTERTAINMENT
+def test_feed_entertainment_beats_household():
+    assert _activity(media_activity="entertainment", household_active=True) == ACT_ENTERTAINMENT
 
 
-def test_entertainment_from_active_flag():
-    assert _activity(entertainment_active=True) == ACT_ENTERTAINMENT
+def test_feed_music_beats_pc_active():
+    assert _activity(media_activity="music", pc_active=True) == ACT_MUSIC
 
 
-def test_gaming_beats_entertainment_and_music():
-    assert _activity(
-        media_context="gaming", entertainment_active=True, music_active=True
-    ) == ACT_GAMING
+# --- raw reads removed (no double detection) ------------------------------
 
 
-# --- music ----------------------------------------------------------------
+def test_compute_activity_signature_has_no_raw_media_params():
+    import inspect
+
+    params = inspect.signature(logic.compute_activity).parameters
+    for forbidden in (
+        "media_context", "stash_streams", "gaming_platform",
+        "entertainment_active", "music_active",
+    ):
+        assert forbidden not in params, forbidden
 
 
-def test_music_when_active():
-    assert _activity(music_active=True) == ACT_MUSIC
+def test_feed_private_without_reading_stash():
+    # Feed=private_time löst private aus, ohne dass Core Stash-Streams liest.
+    assert _activity(media_activity="private_time") == ACT_PRIVATE
 
 
-def test_music_beats_pc_active():
-    assert _activity(music_active=True, pc_active=True) == ACT_MUSIC
+def test_no_feed_no_media_bucket_even_if_named_like_music():
+    # Ohne Feed gibt es keinen Media-Bucket — kein Roh-Fallback auf HomePods/Denon.
+    assert _activity(media_activity=None, pc_active=True) == ACT_PC_ACTIVE
+    assert _activity(media_activity=None) == ACT_IDLE
 
 
-def test_entertainment_beats_music():
-    assert _activity(media_context="tv", music_active=True) == ACT_ENTERTAINMENT
+# --- missing / unavailable feed -------------------------------------------
+
+
+def test_feed_missing_does_not_crash_and_no_bucket():
+    assert _activity(media_activity=None) == ACT_IDLE
+
+
+def test_feed_unavailable_or_unknown_no_bucket():
+    assert _activity(media_activity="unavailable") == ACT_IDLE
+    assert _activity(media_activity="unknown", pc_active=True) == ACT_PC_ACTIVE
 
 
 # --- work_home / pc_active ------------------------------------------------
@@ -212,28 +233,69 @@ def test_private_beats_work():
     assert _activity(private_active=True, homeoffice=True) == ACT_PRIVATE
 
 
-# --- household / free_time / idle -----------------------------------------
+# --- household / idle -----------------------------------------------------
 
 
 def test_household_when_only_household_active():
     assert _activity(household_active=True) == ACT_HOUSEHOLD
 
 
-def test_free_time_is_residual_non_idle_context():
-    # ein Nicht-Idle-Kontext, der kein eigener Bucket ist → free_time
-    assert _activity(media_context="somethingelse") == ACT_FREE_TIME
+def test_household_beats_pc_active():
+    assert _activity(household_active=True, pc_active=True) == ACT_HOUSEHOLD
 
 
 def test_fallback_idle():
     assert _activity() == ACT_IDLE
 
 
-def test_idle_media_context_stays_idle():
-    assert _activity(media_context="idle") == ACT_IDLE
+# --- feed → activity → presence-effective activity-hold (regression) -------
+# Stellt sicher, dass die Hold-Semantik nach dem Feed-Umbau unverändert ist:
+# music/entertainment = soft (bricht bei bestätigtem Far-Away), private/gaming =
+# hard (hält auch bei Far-Away). Kein Eingriff in presence_personal.
 
 
-def test_regression_tv_is_entertainment_not_free_time():
-    """Contract-Änderung PR2: media_context=tv ist jetzt entertainment."""
-    result = _activity(media_context="tv")
-    assert result == ACT_ENTERTAINMENT
-    assert result != ACT_FREE_TIME
+def _hold_for(media_activity, *, home_band=BAND_HOME, trend="flat"):
+    act = _activity(media_activity=media_activity)
+    hold = logic.apply_activity_hold(
+        presence_personal=PERS_AWAY,
+        base_effective="away",
+        base_transition="away",
+        activity=act,
+        home_band=home_band,
+        proximity_trend=trend,
+    )
+    return act, hold
+
+
+def test_feed_music_is_soft_hold():
+    # Zuhause-nah: Hold greift (assumed home).
+    act, hold = _hold_for("music")
+    assert act == ACT_MUSIC
+    assert hold.assumed is True
+    # Bestätigtes Far-Away: soft hold BRICHT.
+    _, hold_far = _hold_for("music", home_band=BAND_FAR, trend="away_from_home")
+    assert hold_far.assumed is False
+    # Away-Gate: bei gebrochenem Soft-Hold ist das Gate aktiv (kein Hold).
+    assert logic.away_gate_active(PERS_AWAY, hold_far.hold_active) is True
+
+
+def test_feed_entertainment_is_soft_hold():
+    _, hold_far = _hold_for("entertainment", home_band=BAND_FAR, trend="away_from_home")
+    assert hold_far.assumed is False
+
+
+def test_feed_gaming_is_hard_hold():
+    # Harter Anker: hält AUCH bei bestätigtem Far-Away.
+    act, hold = _hold_for("gaming", home_band=BAND_FAR, trend="away_from_home")
+    assert act == ACT_GAMING
+    assert hold.assumed is True
+    assert hold.hold_active is True
+    # Away-Gate bleibt off, solange der harte Hold aktiv ist.
+    assert logic.away_gate_active(PERS_AWAY, hold.hold_active) is False
+
+
+def test_feed_private_is_hard_hold():
+    act, hold = _hold_for("private_time", home_band=BAND_FAR, trend="away_from_home")
+    assert act == ACT_PRIVATE
+    assert hold.assumed is True
+    assert hold.hold_active is True

@@ -50,15 +50,19 @@ CONF_HOMEOFFICE_PING = "homeoffice_ping"
 CONF_HOLIDAY_SENSOR = "holiday_sensor"
 CONF_HOUSEHOLD_SOURCE = "household_source"
 CONF_SOLAR_NOON = "solar_noon"
-# Activity v1 (PR2) — zusätzliche Media-/Audio-Signale für den Activity-State.
-# media_state klassifiziert reines Audio bewusst als idle (audio_only_idle), darum
-# liest das Gehirn die Musik-Player direkt. PC-Aktiv nutzt weiterhin CONF_PC_ACTIVE.
-CONF_HOMEPODS_PLAYER = "homepods_player"      # media_player, State "playing" == Musik
-CONF_DENON_ACTIVE = "denon_active"            # core_devices-Master, "active" == Musik
-CONF_ENTERTAINMENT_ACTIVE = "entertainment_active"  # media_state Binary (tv/stream/game)
-CONF_MEDIA_DEVICE = "media_device"            # media_state Primärgerät (nur Attribut)
-CONF_GAMING_PLATFORM = "gaming_platform"      # media_state Plattform (ps5/switch/pc/none)
-CONF_STASH_STREAMS = "stash_streams"          # Zähler; > 0 == private_time
+# Activity v2 (PR2 / FLEET-256): Media-Aktivität kommt jetzt aus EINEM
+# media_state-Feed statt aus Roh-Playern. media_state ist Owner der
+# Media-Wahrheit (benni_media_state v0.12.0 / FLEET-255) — Core liest KEINE
+# HomePods/Denon/Stash-Rohsignale mehr (keine Doppel-Detektion, kein
+# Roh-Fallback). Der Feed-State ist die Media-Hälfte des Activity-States
+# (private_time/gaming/entertainment/music/idle); Core arbitriert weiter die
+# Gesamtpriorität.
+CONF_MEDIA_ACTIVITY_CONTEXT = "media_activity_context"  # media_state-Feed (State = Media-Bucket)
+# Debug-/Attribut-Echo aus media_state — treiben die Activity-Entscheidung NICHT
+# mehr, nur noch für Observability im activity_state-Attribut sichtbar.
+CONF_ENTERTAINMENT_ACTIVE = "entertainment_active"  # media_state Binary (nur Debug-Attribut)
+CONF_MEDIA_DEVICE = "media_device"            # media_state Primärgerät (nur Debug-Attribut)
+CONF_GAMING_PLATFORM = "gaming_platform"      # media_state Plattform (nur Debug-Attribut)
 
 # Numeric thresholds (options flow)
 CONF_HOME_RADIUS = "home_radius"
@@ -236,13 +240,14 @@ PROFILE_PREFILL: dict[str, dict[str, str]] = {
         # extrahierten L1-Feeder benni_media_state (profil-getriebener Slug).
         CONF_MEDIA_CONTEXT: "sensor.benni_media_state_media_context",
         CONF_SOLAR_NOON: "sensor.system_sun2_solar_noon",
-        # Activity v1 (PR2): lokale Aktivitäts-Signale.
-        CONF_HOMEPODS_PLAYER: "media_player.living_homepods_ma_group",
-        CONF_DENON_ACTIVE: "sensor.benni_master_denon",
+        # Activity v2 (PR2 / FLEET-256): Media-Hälfte aus dem media_state-Feed.
+        # WICHTIG: stabiler Live-Slug mit system_-Präfix (neu registrierte Entity
+        # erbt system_; nie auf den clean slug binden — Wurzel des v0.10.0-Bugs).
+        CONF_MEDIA_ACTIVITY_CONTEXT: "sensor.system_benni_media_state_activity_context",
+        # Debug-/Attribut-Echo (clean slug — bestehende media_state-Sensoren):
         CONF_ENTERTAINMENT_ACTIVE: "binary_sensor.benni_media_state_entertainment_active",
         CONF_MEDIA_DEVICE: "sensor.benni_media_state_media_device",
         CONF_GAMING_PLATFORM: "sensor.benni_media_state_gaming_platform",
-        CONF_STASH_STREAMS: "sensor.stash_active_streams",
         # Bewusst NICHT gebunden: kein echter Homeoffice-Indikator existiert →
         # CONF_HOMEOFFICE_PING bleibt leer (work_home ist geplant, nicht faked);
         # sensor.title_classifier_stash_enum (live 404) und sensor.psn_now_playing.
