@@ -3,6 +3,38 @@
 Alle nennenswerten Änderungen an dieser Integration. Neuester Eintrag oben.
 Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
+## [0.8.0] - 2026-07-07
+
+### Added
+- **Presence-Effective Activity-Hold.** Starke lokale Aktivität hält
+  `presence_effective` bei rohem `presence_personal == abwesend` auf `home`
+  (`assumed`), **ohne** `presence_personal` zu verändern (roher Owner bleibt
+  unangetastet). Ein GPS-Blip während laufender lokaler Aktivität reißt so keine
+  away-gegateten Konsumenten (Media-Musik, Tür) mehr ab.
+  - Hold-Stärken: `private_time`/`gaming`/`entertainment`/`work_home`/`music` =
+    hoch, `pc_active`/`household` = mittel. `idle`/`sleep`/`waking`/`free_time`
+    halten **nicht** (free_time bewusst konservativ = kein Hold).
+  - **Hold-Bruch differenziert:** ein bestätigtes Far-Away
+    (`presence_band == far` UND Proximity-Trend `away_from_home`) bricht nur die
+    **weichen/ambienten** Signale (`music`/`entertainment` — können vergessen
+    weiterlaufen), Reason `activity_hold_broken_far_away:<activity>`. Die
+    **harten Anker** (`pc_active`/`gaming`/`private_time`/`work_home`/`household`
+    — bei Benni sehr wahrscheinlich physische Anwesenheit) halten `home` auch bei
+    Far-Away.
+  - `bei_eltern` wird nie durch Aktivität überschrieben (home-äquivalent bleibt).
+- **Away-Gate berücksichtigt den Hold:** `binary_sensor.*presence_away` ist `off`,
+  wenn der Activity-Hold `presence_effective` auf assumed `home` hält (raw
+  weiterhin `abwesend`).
+- Neue `presence_effective`-Attribute: `raw_presence`, `effective_reason`,
+  `assumed`, `hold_strength`, `source_activity`, `activity_state`,
+  `activity_reason`, `activity_hold_active`, `activity_hold_candidates`.
+
+### Note
+- `presence_personal` bleibt semantisch unverändert (roh: zuhause/abwesend/
+  bei_eltern). Der Hold ist eine reine Overlay-Schicht auf `presence_effective`;
+  die Basis-Arbitration (Leaving-Stabilisierung etc.) sieht weiter ihren eigenen
+  ungehaltenen Verlauf.
+
 ## [0.7.0] - 2026-07-07
 
 ### Added

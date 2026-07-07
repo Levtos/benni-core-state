@@ -173,6 +173,35 @@ ACTIVITY_STATES = [
     ACT_GAMING, ACT_ENTERTAINMENT, ACT_MUSIC, ACT_PC_ACTIVE,
 ]
 
+# --- Presence-Effective Activity-Hold (PR3) ----------------------------------
+# Starke lokale Aktivität darf `presence_effective` bei rohem `abwesend` auf
+# `home` HALTEN (assumed) — `presence_personal` bleibt unangetastet.
+# `idle`/`sleep`/`waking`/`free_time` sind bewusst KEINE Hold-Aktivitäten
+# (free_time konservativ = kein Hold).
+#
+# Far-Away-Bruch differenziert (siehe logic.apply_activity_hold):
+#   HARTE Anker (pc_active/gaming/private_time/work_home/household) bedeuten bei
+#     Benni sehr wahrscheinlich physische Anwesenheit / bewusste lokale Nutzung —
+#     sie halten `home` AUCH bei `band == far` + Trend `away_from_home`.
+#   WEICHE/ambiente Signale (music/entertainment) können vergessen weiterlaufen
+#     (HomePods/Denon/TV) — bei bestätigtem Far-Away wird ihr Hold GEBROCHEN.
+HOLD_NONE = "none"
+HOLD_LOW = "low"
+HOLD_MID = "mid"
+HOLD_HIGH = "high"
+ACTIVITY_HOLD_STRENGTH: dict[str, str] = {
+    ACT_PRIVATE: HOLD_HIGH,
+    ACT_GAMING: HOLD_HIGH,
+    ACT_ENTERTAINMENT: HOLD_HIGH,
+    ACT_WORK_HOME: HOLD_HIGH,
+    ACT_MUSIC: HOLD_HIGH,
+    ACT_PC_ACTIVE: HOLD_MID,
+    ACT_HOUSEHOLD: HOLD_MID,
+}
+# Weiche/ambiente Hold-Aktivitäten: ihr Hold bricht bei bestätigtem Far-Away.
+# Alle übrigen Hold-Aktivitäten sind harte Anker (halten trotz Far-Away).
+SOFT_HOLD_ACTIVITIES: frozenset[str] = frozenset({ACT_MUSIC, ACT_ENTERTAINMENT})
+
 # --- Profile (Route benni / eltern) ------------------------------------------
 
 # Beim Hinzufügen der Integration wird die "Route" gewählt: dieselbe Codebasis,
