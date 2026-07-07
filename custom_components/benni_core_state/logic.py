@@ -28,6 +28,8 @@ from .const import (
     ACT_SLEEP,
     ACT_WAKING,
     ACT_WORK_HOME,
+    ACTIVITY_HOLD_STRENGTH,
+    SOFT_HOLD_ACTIVITIES,
     BAND_FAR,
     BAND_HOME,
     BAND_NEAR,
@@ -59,6 +61,7 @@ from .const import (
     EFF_UNCERTAIN,
     HH_EMPTY,
     HH_OCCUPIED,
+    HOLD_NONE,
     PERS_AWAY,
     PERS_HOME,
     PERS_PARENTS,
@@ -986,3 +989,102 @@ def compute_activity(
         return ACT_FREE_TIME
 
     return ACT_IDLE
+
+
+# --------------------------------------------------------- effective presence
+#                                                           activity-hold (PR3)
+
+
+@dataclass(frozen=True)
+class ActivityHoldResult:
+    """Overlay-Ergebnis des lokalen Activity-Holds auf presence_effective."""
+
+    effective_presence: str
+    transition: str
+    assumed: bool
+    reason: str
+    hold_strength: str
+    source_activity: str | None
+    hold_active: bool
+
+
+def apply_activity_hold(
+    *,
+    presence_personal: str,
+    base_effective: str,
+    base_transition: str,
+    activity: str,
+    home_band: str,
+    proximity_trend: str,
+) -> ActivityHoldResult:
+    """Halte ``presence_effective`` bei rohem ``abwesend`` per starker Aktivität
+    auf ``home`` — OHNE ``presence_personal`` zu verändern (der bleibt roher Owner).
+
+    Regeln:
+
+    * ``zuhause`` → ``home`` (nie ``assumed``), Reason ``raw_home``.
+    * ``bei_eltern`` → Basis unverändert durchreichen (die bestehende Logik löst
+      Eltern als ``away`` = home-äquivalent auf); Aktivität überschreibt Eltern
+      NIE.
+    * ``abwesend`` → wenn eine Hold-Aktivität aktiv ist
+      (``ACTIVITY_HOLD_STRENGTH``), wird ``home`` **assumed** gehalten. Der
+      Far-Away-Bruch ist differenziert:
+        - **Harte Anker** (``pc_active``/``gaming``/``private_time``/
+          ``work_home``/``household``) bedeuten bei Benni sehr wahrscheinlich
+          physische Anwesenheit / bewusste lokale Nutzung → sie halten ``home``
+          AUCH bei bestätigtem Far-Away (``home_band == far`` UND Trend
+          ``away_from_home``).
+        - **Weiche/ambiente Signale** (``music``/``entertainment``,
+          ``SOFT_HOLD_ACTIVITIES``) können vergessen weiterlaufen → bei
+          bestätigtem Far-Away wird ihr Hold GEBROCHEN, Reason
+          ``activity_hold_broken_far_away:<activity>``.
+    * Sonst (kein Hold, oder Soft-Hold-Bruch) → Basis unverändert durchreichen.
+
+    Rein / testbar; kein HA-Import. ``presence_personal`` wird nie geschrieben.
+    """
+    if presence_personal == PERS_HOME:
+        return ActivityHoldResult(
+            base_effective, base_transition, False, "raw_home", HOLD_NONE, None, False
+        )
+    if presence_personal == PERS_PARENTS:
+        return ActivityHoldResult(
+            base_effective, base_transition, False, "at_parents", HOLD_NONE, None, False
+        )
+
+    # presence_personal == abwesend (oder unbekannt): nur echtes Away darf gehalten
+    # werden.
+    strength = ACTIVITY_HOLD_STRENGTH.get(activity)
+    if strength is None:
+        # Keine Hold-Aktivität (idle/sleep/waking/free_time) → Basis durchreichen.
+        return ActivityHoldResult(
+            base_effective, base_transition, False, base_effective, HOLD_NONE, None, False
+        )
+
+    confirmed_far_away = home_band == BAND_FAR and proximity_trend == "away_from_home"
+    if confirmed_far_away and activity in SOFT_HOLD_ACTIVITIES:
+        # Weiches/ambientes Signal bei bestätigtem Far-Away → Hold brechen.
+        return ActivityHoldResult(
+            base_effective,
+            base_transition,
+            False,
+            f"activity_hold_broken_far_away:{activity}",
+            HOLD_NONE,
+            None,
+            False,
+        )
+
+    # Harter Anker (immer) oder weiches Signal ohne Far-Away → Hold greift.
+    return ActivityHoldResult(
+        EFF_HOME, EFF_HOME, True, f"activity_hold:{activity}", strength, activity, True
+    )
+
+
+def away_gate_active(presence_personal: str, hold_active: bool) -> bool:
+    """Kanonisches Away-Gate: ``on`` ⇔ ``abwesend`` UND kein aktiver Activity-Hold.
+
+    ``zuhause``/``bei_eltern`` sind home-äquivalent (Gate off). Ein aktiver
+    Activity-Hold (assumed home bei rohem ``abwesend``) schaltet das Gate off —
+    so reißt ein GPS-Blip bei laufender lokaler Aktivität keine away-gegateten
+    Konsumenten ab.
+    """
+    return presence_personal == PERS_AWAY and not hold_active

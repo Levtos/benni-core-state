@@ -38,6 +38,7 @@ from .const import (
     PROFILE_LABELS,
     unique_id,
 )
+from . import logic
 from .coordinator import BenniCoreStateCoordinator, coordinator_from_hass
 from .models import ComputedState
 
@@ -177,10 +178,13 @@ class PresenceAwayBinarySensor(
 ):
     """Canonical away gate for the whole fleet.
 
-    ``on`` ⇔ ``presence_personal == abwesend``. ``zuhause`` and ``bei_eltern``
-    both read ``off`` (bei_eltern is home-equivalent: no away-mode should fire).
-    Downstream modules (media, door, …) consume THIS instead of re-deriving
-    home/away from raw trackers — one owner of the presence decision.
+    ``on`` ⇔ ``presence_personal == abwesend`` AND no active Activity-Hold.
+    ``zuhause`` and ``bei_eltern`` both read ``off`` (bei_eltern is
+    home-equivalent: no away-mode should fire). PR3: when strong local activity
+    holds ``presence_effective`` at assumed ``home`` (raw still ``abwesend``),
+    this gate goes ``off`` too — a GPS blip during active local presence no
+    longer tears down away-gated consumers (media, door). Downstream modules
+    consume THIS instead of re-deriving home/away — one owner of the decision.
     """
 
     # No device_class: the PRESENCE class would invert semantics (on=home),
@@ -197,15 +201,20 @@ class PresenceAwayBinarySensor(
 
     @property
     def is_on(self) -> bool:
-        if self.coordinator.data is None:
+        data = self.coordinator.data
+        if data is None:
             return False
-        return self.coordinator.data.presence_personal == PERS_AWAY
+        return logic.away_gate_active(data.presence_personal, data.effective_hold_active)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         if self.coordinator.data is None:
             return {}
-        return self.coordinator.data.attrs.get("presence_personal", {})
+        return {
+            **self.coordinator.data.attrs.get("presence_personal", {}),
+            "activity_hold_active": self.coordinator.data.effective_hold_active,
+            "effective_reason": self.coordinator.data.effective_reason,
+        }
 
     @property
     def available(self) -> bool:

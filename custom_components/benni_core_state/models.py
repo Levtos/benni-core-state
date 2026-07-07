@@ -67,3 +67,11 @@ class ComputedState:
     activity_state: str
     master_context: str
     attrs: dict[str, dict[str, Any]] = field(default_factory=dict)
+    # Presence-Effective Activity-Hold (PR3). presence_effective/-_transition
+    # oben tragen bereits den (ggf. gehaltenen) Wert; diese Felder machen den
+    # Hold für Away-Gate + Attribute sichtbar. presence_personal bleibt roh.
+    effective_reason: str = "raw_home"
+    effective_assumed: bool = False
+    effective_hold_strength: str = "none"
+    effective_source_activity: str | None = None
+    effective_hold_active: bool = False

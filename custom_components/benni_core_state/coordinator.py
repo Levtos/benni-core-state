@@ -31,6 +31,7 @@ from homeassistant.util import dt as dt_util
 
 from . import logic
 from .const import (
+    ACTIVITY_HOLD_STRENGTH,
     CONF_COFFEE_ACTIVE,
     CONF_DENON_ACTIVE,
     CONF_DOOR_WAKE,
@@ -453,6 +454,28 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
             entertainment_active=entertainment_active, music_active=music_active,
             pc_active=pc_active,
         )
+        activity_reason = _activity_reason(
+            activity,
+            media_context=media_ctx,
+            stash_streams=stash_streams,
+            gaming_platform=gaming_platform,
+            entertainment_active=entertainment_active,
+            homepods_playing=homepods_state == "playing",
+            denon_active=denon_active,
+        )
+
+        # Presence-Effective Activity-Hold (PR3): starke lokale Aktivität hält
+        # presence_effective bei rohem `abwesend` auf `home` (assumed) — ohne
+        # presence_personal anzufassen. Nach `activity` berechnet, damit der Hold
+        # den aktuellen Activity-State kennt.
+        hold = logic.apply_activity_hold(
+            presence_personal=presence_personal,
+            base_effective=effective.effective_presence,
+            base_transition=effective.transition,
+            activity=activity,
+            home_band=presence_band,
+            proximity_trend=effective.proximity_trend,
+        )
 
         master = ".".join(
             [presence_personal, new_bio, day_state, day_context, activity]
@@ -488,7 +511,19 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
                 "started": self._persistent.transition_started,
                 "direction": prox_dir,
             },
-            "presence_effective": logic.effective_presence_attrs(effective),
+            "presence_effective": {
+                **logic.effective_presence_attrs(effective),
+                # Activity-Hold (PR3) — presence_personal bleibt roh.
+                "raw_presence": presence_personal,
+                "effective_reason": hold.reason,
+                "assumed": hold.assumed,
+                "hold_strength": hold.hold_strength,
+                "source_activity": hold.source_activity,
+                "activity_state": activity,
+                "activity_reason": activity_reason,
+                "activity_hold_active": hold.hold_active,
+                "activity_hold_candidates": sorted(ACTIVITY_HOLD_STRENGTH),
+            },
             "preheat": {
                 "source": preheat_source,
                 "started": self._persistent.preheat_started,
@@ -526,15 +561,7 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
                 "stash_streams": stash_streams,
                 "household": external_occupied,
                 "homeoffice": homeoffice,
-                "activity_reason": _activity_reason(
-                    activity,
-                    media_context=media_ctx,
-                    stash_streams=stash_streams,
-                    gaming_platform=gaming_platform,
-                    entertainment_active=entertainment_active,
-                    homepods_playing=homepods_state == "playing",
-                    denon_active=denon_active,
-                ),
+                "activity_reason": activity_reason,
             },
             "master_context": {
                 "presence": presence_personal,
@@ -550,8 +577,8 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
             presence_household=presence_household,
             presence_band=presence_band,
             presence_transition=new_trans,
-            presence_effective=effective.effective_presence,
-            presence_effective_transition=effective.transition,
+            presence_effective=hold.effective_presence,
+            presence_effective_transition=hold.transition,
             preheat_active=preheat_active,
             preheat_source=preheat_source,
             preheat_started=self._persistent.preheat_started,
@@ -563,6 +590,11 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
             activity_state=activity,
             master_context=master,
             attrs=attrs,
+            effective_reason=hold.reason,
+            effective_assumed=hold.assumed,
+            effective_hold_strength=hold.hold_strength,
+            effective_source_activity=hold.source_activity,
+            effective_hold_active=hold.hold_active,
         )
 
 
