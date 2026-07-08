@@ -570,6 +570,36 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
             },
         }
 
+        # Live-Status UX (Anzeige-only, keine Policy). Speist sich ausschließlich
+        # aus schon berechneten Werten + dem gespiegelten Media-Feed — kein neuer
+        # Roh-Read. Bei private_time bleibt der Text/die Attribute privacy-safe.
+        fa = feed_attrs if feed_available else {}
+        live = logic.compute_live_status(
+            bio=new_bio,
+            presence_personal=presence_personal,
+            presence_effective=hold.effective_presence,
+            presence_transition=new_trans,
+            activity=activity,
+            activity_reason=activity_reason,
+            presence_reason=hold.reason,
+            media_activity_context=feed_state if feed_available else None,
+            media_activity_reason=fa.get("reason"),
+            media_activity_hold_strength=fa.get("hold_strength"),
+            media_activity_source=self._entity_id(CONF_MEDIA_ACTIVITY_CONTEXT),
+            title=fa.get("title"),
+            artist=fa.get("artist"),
+            game_title=fa.get("game_title"),
+            source_app=fa.get("source_app"),
+            media_device=media_device,
+            gaming_platform=gaming_platform,
+            gaming_source=fa.get("gaming_source"),
+            pc_active=pc_active,
+            assumed=hold.assumed,
+            activity_hold_active=hold.hold_active,
+            day_state=day_state,
+        )
+        attrs["live_status"] = live.attrs
+
         return ComputedState(
             presence_personal=presence_personal,
             presence_household=presence_household,
@@ -593,6 +623,7 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
             effective_hold_strength=hold.hold_strength,
             effective_source_activity=hold.source_activity,
             effective_hold_active=hold.hold_active,
+            live_status=live.state,
         )
 
 

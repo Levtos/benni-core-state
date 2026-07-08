@@ -75,3 +75,6 @@ class ComputedState:
     effective_hold_strength: str = "none"
     effective_source_activity: str | None = None
     effective_hold_active: bool = False
+    # Live-Status UX-Sensor (Anzeige-only, keine Policy). Kurzer deutscher Text;
+    # Details liegen in attrs["live_status"].
+    live_status: str = ""

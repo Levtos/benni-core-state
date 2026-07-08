@@ -75,6 +75,9 @@ SENSORS: tuple[_Desc, ...] = (
           ACTIVITY_STATES, lambda s: s.activity_state, "activity_state"),
     _Desc("master_context", "Master Context",
           None, lambda s: s.master_context, "master_context"),
+    # UX-/Anzeige-Sensor (kein Enum, keine Policy): sprechender deutscher Status.
+    _Desc("live_status", "Live Status",
+          None, lambda s: s.live_status, "live_status"),
 )
 
 

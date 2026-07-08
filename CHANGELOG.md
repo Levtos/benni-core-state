@@ -3,6 +3,31 @@
 Alle nennenswerten Änderungen an dieser Integration. Neuester Eintrag oben.
 Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
+## [0.10.0] - 2026-07-08
+
+### Added
+- **`sensor.benni_core_state_live_status`** — zentraler deutschsprachiger
+  Live-Status-Text fürs Dashboard/Cockpit (z.B. „Benni hört <Titel> – <Artist>",
+  „Benni ist am PC", „Benni spielt <Spiel>", „Benni schaut etwas", „Benni ist
+  unterwegs", „Benni ist bei den Eltern", „Benni schläft", „Private Time aktiv").
+- Der Status wird aus bereits vorhandenem Core-State-Kontext und den gespiegelten
+  Media-Activity-Feed-Attributen abgeleitet (pure `logic.compute_live_status`) —
+  **kein neuer Roh-Media-Read**.
+- Reiche Anzeige-Attribute: `headline`, `subtitle`, `activity_state`,
+  `activity_reason`, `presence_personal`, `presence_effective`, `presence_reason`,
+  `presence_assumed`, `activity_hold_active`, `bio_state`, `day_state`,
+  `media_activity_context`, `media_activity_reason`, `media_activity_hold_strength`,
+  `media_activity_source`, `media_title`, `media_artist`, `game_title`,
+  `source_app`, `source_device`, `privacy_level`, `icon_hint`, `priority`, `source`.
+- **Private Time ist privacy-safe:** State „Private Time aktiv", `privacy_level=private`,
+  keine Titel/Studio/Stash-Details in State oder Attributen.
+
+### Unchanged
+- `live_status` ist ein reiner Anzeige-/UX-Sensor und **keine** Policy-Quelle.
+- `activity_state` bleibt der technische Enum; `master_context`, `presence_*`,
+  Away-Gate und Activity-Hold-Semantik sind unverändert (ergänzt, nicht ersetzt).
+- Keine Media-State-, Door-Policy- oder Lovelace/Dashboard-Änderung.
+
 ## [0.9.0] - 2026-07-07
 
 ### Changed
