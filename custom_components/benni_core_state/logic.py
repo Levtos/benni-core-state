@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from typing import Any
 
 from .const import (
     ACT_ENTERTAINMENT,
@@ -26,6 +27,7 @@ from .const import (
     ACT_PRIVATE,
     ACT_SLEEP,
     ACT_WAKING,
+    ACT_WORK_AWAY,
     ACT_WORK_HOME,
     ACTIVITY_HOLD_STRENGTH,
     SOFT_HOLD_ACTIVITIES,
@@ -1102,3 +1104,199 @@ def away_gate_active(presence_personal: str, hold_active: bool) -> bool:
     Konsumenten ab.
     """
     return presence_personal == PERS_AWAY and not hold_active
+
+
+# --------------------------------------------------------- live_status (UX)
+# Anzeige-only Cockpit-Sensor. Fasst den bereits arbitrierten Kontext in einen
+# kurzen deutschen Text + reiche Attribute. KEINE Policy-Entscheidung, KEIN
+# neuer Roh-Read — alle Eingaben stammen aus schon berechneten Core-State-Daten.
+
+_LIVE_STATE_MAXLEN = 250
+
+_LIVE_DEVICE_LABELS: dict[str, str] = {
+    "homepods": "HomePods",
+    "denon": "Denon",
+    "pc": "PC",
+    "ps5": "PS5",
+    "switch": "Switch",
+    "tv": "TV",
+    "appletv": "Apple TV",
+}
+_LIVE_PLATFORM_LABELS: dict[str, str] = {
+    "ps5": "PS5",
+    "switch": "Switch",
+    "pc": "PC",
+}
+
+
+@dataclass(frozen=True)
+class LiveStatus:
+    """Ergebnis des UX-Live-Status: kurzer State-Text + Anzeige-Attribute."""
+
+    state: str
+    attrs: dict[str, Any]
+
+
+def _live_clean(value: Any) -> str | None:
+    """Normalisiere einen optionalen String; leere/Sentinel-Werte → None."""
+    if value is None:
+        return None
+    s = str(value).strip()
+    if not s or s.lower() in ("none", "unknown", "unavailable"):
+        return None
+    return s
+
+
+def compute_live_status(
+    *,
+    bio: str,
+    presence_personal: str,
+    presence_effective: str,
+    presence_transition: str,
+    activity: str,
+    activity_reason: str | None = None,
+    presence_reason: str | None = None,
+    media_activity_context: str | None = None,
+    media_activity_reason: str | None = None,
+    media_activity_hold_strength: str | None = None,
+    media_activity_source: str | None = None,
+    title: str | None = None,
+    artist: str | None = None,
+    game_title: str | None = None,
+    source_app: str | None = None,
+    media_device: str | None = None,
+    gaming_platform: str | None = None,
+    gaming_source: str | None = None,
+    pc_active: bool = False,
+    assumed: bool = False,
+    activity_hold_active: bool = False,
+    day_state: str | None = None,
+) -> LiveStatus:
+    """Leite den sprechenden Live-Status ab (Anzeige-only, Prioritäts-geordnet).
+
+    Reihenfolge: sleep/waking > Presence-Overlays (Eltern / unterwegs /
+    Übergänge) > private_time > gaming > entertainment > music > work >
+    household > pc_active > zuhause > unbekannt. Media-Details kommen aus dem
+    bereits gespiegelten Media-Activity-Feed; bei ``private_time`` werden KEINE
+    Titel/Studio/Stash-Details in State oder Attribute übernommen.
+    """
+    title = _live_clean(title)
+    artist = _live_clean(artist)
+    game_title = _live_clean(game_title)
+    source_app = _live_clean(source_app)
+    device = _live_clean(media_device)
+    platform = _live_clean(gaming_platform)
+    device_label = _LIVE_DEVICE_LABELS.get((device or "").lower(), device)
+
+    # ----- Prioritäts-Kaskade -----
+    if bio == BIO_SLEEP or activity == ACT_SLEEP:
+        headline, icon, privacy, priority = "Benni schläft", "mdi:sleep", "normal", "sleep"
+    elif bio == BIO_WAKING or activity == ACT_WAKING:
+        headline, icon, privacy, priority = (
+            "Benni wacht auf", "mdi:weather-sunset-up", "normal", "waking",
+        )
+    elif presence_personal == PERS_PARENTS:
+        headline, icon, privacy, priority = (
+            "Benni ist bei den Eltern", "mdi:home-heart", "presence", "presence",
+        )
+    elif presence_transition == TRANS_COMING_HOME:
+        headline, icon, privacy, priority = (
+            "Benni kommt nach Hause", "mdi:home-import-outline", "presence", "presence",
+        )
+    elif presence_transition == TRANS_LEAVING_HOME:
+        headline, icon, privacy, priority = (
+            "Benni geht los", "mdi:home-export-outline", "presence", "presence",
+        )
+    elif presence_effective in (EFF_AWAY, EFF_LEAVING):
+        headline, icon, privacy, priority = (
+            "Benni ist unterwegs", "mdi:walk", "presence", "presence",
+        )
+    elif activity == ACT_PRIVATE:
+        # Privacy-safe: keine Details, kein Stash/Studio/Titel.
+        headline, icon, privacy, priority = (
+            "Private Time aktiv", "mdi:shield-lock", "private", "private",
+        )
+    elif activity == ACT_GAMING:
+        if game_title:
+            headline = f"Benni spielt {game_title}"
+        elif platform:
+            headline = f"Benni spielt {_LIVE_PLATFORM_LABELS.get(platform, platform)}"
+        else:
+            headline = "Benni spielt gerade"
+        icon, privacy, priority = "mdi:gamepad-variant", "normal", "gaming"
+    elif activity == ACT_ENTERTAINMENT:
+        headline = f"Benni schaut {source_app}" if source_app else "Benni schaut etwas"
+        icon, privacy, priority = "mdi:television-play", "normal", "entertainment"
+    elif activity == ACT_MUSIC:
+        if title and artist:
+            headline = f"Benni hört {title} – {artist}"
+        elif title:
+            headline = f"Benni hört {title}"
+        else:
+            headline = "Benni hört Musik"
+        icon, privacy, priority = "mdi:music", "normal", "music"
+    elif activity == ACT_WORK_HOME:
+        headline, icon, privacy, priority = (
+            "Benni arbeitet zuhause", "mdi:briefcase", "normal", "work",
+        )
+    elif activity == ACT_WORK_AWAY:
+        headline, icon, privacy, priority = (
+            "Benni arbeitet außer Haus", "mdi:briefcase-outline", "normal", "work",
+        )
+    elif activity == ACT_HOUSEHOLD:
+        headline, icon, privacy, priority = "Haushalt aktiv", "mdi:broom", "normal", "household"
+    elif activity == ACT_PC_ACTIVE or (pc_active and activity == ACT_IDLE):
+        headline, icon, privacy, priority = (
+            "Benni ist am PC", "mdi:desktop-classic", "normal", "pc",
+        )
+    elif presence_effective == EFF_HOME or presence_personal == PERS_HOME:
+        headline, icon, privacy, priority = "Benni ist zuhause", "mdi:home", "normal", "home"
+    else:
+        headline, icon, privacy, priority = "Status unbekannt", "mdi:help-circle", "unknown", "unknown"
+
+    is_private = priority == "private"
+
+    # ----- subtitle (kurze technische Ergänzung; nie bei private) -----
+    if priority in ("music", "gaming", "entertainment"):
+        subtitle = " · ".join(
+            p for p in (device_label, _live_clean(media_activity_reason)) if p
+        ) or None
+    elif priority == "presence":
+        subtitle = _live_clean(presence_effective)
+    elif is_private:
+        subtitle = None
+    else:
+        subtitle = _live_clean(activity_reason)
+
+    state = headline
+    if len(state) > _LIVE_STATE_MAXLEN:
+        state = state[: _LIVE_STATE_MAXLEN - 1].rstrip() + "…"
+
+    attrs: dict[str, Any] = {
+        "headline": headline,
+        "subtitle": subtitle,
+        "activity_state": activity,
+        "activity_reason": activity_reason,
+        "presence_personal": presence_personal,
+        "presence_effective": presence_effective,
+        "presence_reason": presence_reason,
+        "presence_assumed": bool(assumed),
+        "activity_hold_active": bool(activity_hold_active),
+        "bio_state": bio,
+        "day_state": day_state,
+        "media_activity_context": media_activity_context,
+        # Privacy: bei private_time keine Media-Details/Trigger spiegeln.
+        "media_activity_reason": None if is_private else media_activity_reason,
+        "media_activity_hold_strength": media_activity_hold_strength,
+        "media_activity_source": media_activity_source,
+        "media_title": None if is_private else title,
+        "media_artist": None if is_private else artist,
+        "game_title": None if is_private else game_title,
+        "source_app": None if is_private else source_app,
+        "source_device": None if is_private else device_label,
+        "privacy_level": privacy,
+        "icon_hint": icon,
+        "priority": priority,
+        "source": "benni_core_state.live_status",
+    }
+    return LiveStatus(state, attrs)
