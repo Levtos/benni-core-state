@@ -177,6 +177,84 @@ def test_bei_eltern_when_parents_wlan_home():
     assert _personal(wlan_eltern_2="home") == PERS_PARENTS
 
 
+# --- FLEET-264: parents router vetoes a stale/frozen parents SSID ----------
+
+
+def test_is_away_only_on_definite_negative():
+    # Absence of signal (None/unknown/unavailable) is NOT away — only a definite
+    # negative token counts (router says not_home).
+    assert logic._is_away("not_home") is True
+    assert logic._is_away("NOT_HOME") is True
+    assert logic._is_away("off") is True
+    for v in (None, "unknown", "unavailable", "home", "on", ""):
+        assert logic._is_away(v) is False, v
+
+
+def test_parents_router_not_home_vetoes_stale_parents_ssid_gps_home_wins():
+    # THE live incident (2026-07-08): iOS SSID frozen on the parents WLAN while
+    # Benni is actually home. The parents FRITZ!Box tracker (not_home) vetoes the
+    # stale SSID, so fresh GPS-home wins → zuhause.
+    assert (
+        _personal(
+            ssid="Martin Router King 2",
+            wlan_eltern_1="not_home",
+            gps_primary="home",
+            gps_primary_ts=FRESH_TS,
+        )
+        == PERS_HOME
+    )
+
+
+def test_parents_router_not_home_clears_retained_bei_eltern():
+    # Even without a fresh GPS this tick, a definite parents not_home must clear
+    # a stuck bei_eltern (no positive home/away signal → falls to abwesend).
+    assert (
+        _personal(
+            ssid="Martin Router King 2",
+            wlan_eltern_1="not_home",
+            prev_personal=PERS_PARENTS,
+        )
+        == PERS_AWAY
+    )
+
+
+def test_parents_ssid_still_bei_eltern_when_router_unbound():
+    # Regression guard: with the parents tracker UNBOUND (None), the SSID hint
+    # still asserts bei_eltern — the veto needs a positive not_home, not absence.
+    assert _personal(ssid="Martin Router King 2", wlan_eltern_1=None) == PERS_PARENTS
+    # And even against a fresh GPS-away (unchanged FLEET-100 behaviour).
+    assert (
+        _personal(
+            ssid="Martin Router King 2",
+            wlan_eltern_1=None,
+            gps_primary="not_home",
+            gps_primary_ts=FRESH_TS,
+        )
+        == PERS_PARENTS
+    )
+
+
+def test_parents_router_home_still_bei_eltern_and_beats_gps_home():
+    # Genuinely at parents: router home → bei_eltern, even if 20 m GPS reads home.
+    assert (
+        _personal(
+            ssid="Martin Router King 2",
+            wlan_eltern_1="home",
+            gps_primary="home",
+            gps_primary_ts=FRESH_TS,
+        )
+        == PERS_PARENTS
+    )
+
+
+def test_restart_retain_bei_eltern_preserved_when_tracker_unavailable():
+    # On an HA restart the parents tracker is unavailable → None (absence, not
+    # not_home) → retain bei_eltern (the FLEET-264 exception must NOT fire).
+    assert (
+        _personal(prev_personal=PERS_PARENTS, wlan_eltern_1=None) == PERS_PARENTS
+    )
+
+
 def test_benni_wlan_beats_parents_wlan():
     assert (
         _personal(wlan_benni="home", wlan_benni_ts=FRESH_TS, wlan_eltern_1="home")

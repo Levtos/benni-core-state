@@ -93,6 +93,21 @@ class EffectivePresenceResult:
     proximity_trend: str = "unknown"
 
 
+def _is_away(value: str | None) -> bool:
+    """True for a DEFINITE not-home reading (router/tracker says away).
+
+    Distinct from ``not _is_home``: ``None``/``unknown``/``unavailable`` are NOT
+    away — they are absence-of-signal (unbound slot or a briefly-restarting
+    tracker) and must never assert away. Only an explicit negative token counts.
+    Used for the parents-router override (FLEET-264): a parents WLAN tracker that
+    positively reports ``not_home`` is authoritative that the phone is NOT on the
+    parents network, and overrides a stale ``bei_eltern`` SSID hint.
+    """
+    if value is None:
+        return False
+    return str(value).lower() in ("not_home", "away", "off", "false", "0", "no")
+
+
 def _is_home(value: str | None) -> bool:
     if value is None:
         return False
@@ -212,7 +227,12 @@ def compute_presence_personal(
        *unless* ``gps_primary_fresh_away``.
     1. Benni's WLAN tracker says ``home`` and is fresh → ``zuhause`` —
        *unless* ``gps_primary_fresh_away``.
-    2. Raw SSID matches a configured parents WLAN → ``bei_eltern`` (instant).
+    2. Raw SSID matches a configured parents WLAN → ``bei_eltern`` (instant),
+       *unless* a parents-WLAN tracker positively reports ``not_home``
+       (``parents_router_away``). The iOS SSID sensor freezes on the parents
+       network name and re-reports it with a fresh timestamp, so a freshness
+       gate cannot catch it — the authoritative router vetoes the stale hint
+       (FLEET-264).
     3. Either parents-WLAN tracker says ``home`` → ``bei_eltern``.
        (No freshness check: parents' router state is the ground truth, and a
        stale "home" reading there is still a strong signal that no automatic
@@ -231,6 +251,11 @@ def compute_presence_personal(
        stops an HA-restart from fabricating a false ``abwesend`` that tears down
        away-gated consumers (media music, door). Falls back to ``abwesend`` only
        when no presence has ever been observed (fresh install / empty store).
+       Exception: a retained ``bei_eltern`` is NOT held when the parents router
+       positively says ``not_home`` (``parents_router_away``) — the stuck-parents
+       state clears even without a fresh GPS this tick (FLEET-264). An
+       ``unavailable`` tracker at restart is absence-of-signal, not ``not_home``,
+       so this exception never fires on a restart.
 
     SSID is *positive-only* evidence (see ``_ssid_matches``): an unknown network
     or a brief ``Not Connected`` blip during a 2.4/5 GHz band roam never asserts
@@ -248,6 +273,16 @@ def compute_presence_personal(
     # freeze stale when the iOS companion app stops reporting (FLEET-100).
     gps_primary_fresh_away = fresh_primary and not _is_home(gps_primary)
 
+    # Parents-router truth (FLEET-264): the parents FRITZ!Box tracker is the
+    # authoritative WLAN-association signal. ``home`` on it → definitely there;
+    # a positive ``not_home`` → definitely NOT on the parents network, which
+    # overrides the freshness-less (often iOS-frozen) parents SSID hint. Absence
+    # of signal (None/unknown → both helpers False) asserts neither.
+    parents_present = _is_home(wlan_eltern_1) or _is_home(wlan_eltern_2)
+    parents_router_away = not parents_present and (
+        _is_away(wlan_eltern_1) or _is_away(wlan_eltern_2)
+    )
+
     # 0) Home WLAN by SSID — instant, but yields to a fresh contradicting GPS.
     if _ssid_matches(ssid, home_ssids) and not gps_primary_fresh_away:
         return PERS_HOME
@@ -260,13 +295,17 @@ def compute_presence_personal(
     ):
         return PERS_HOME
 
-    # 2) Parents WLAN by SSID — home equivalent, instant. Not GPS-gated.
-    if _ssid_matches(ssid, parents_ssids):
+    # 2) Parents WLAN by SSID — home equivalent, instant. Not GPS-gated, BUT a
+    # parents router positively reading ``not_home`` vetoes the stale SSID hint
+    # (FLEET-264): the iOS SSID sensor freezes on the parents network name and
+    # keeps re-reporting it with a fresh timestamp, so a freshness gate cannot
+    # catch it — only the authoritative router can.
+    if _ssid_matches(ssid, parents_ssids) and not parents_router_away:
         return PERS_PARENTS
 
     # 3) Parents WLAN — home equivalent. No freshness gate: a router seen as
     # "home" on the parents network is durable evidence that Benni is there.
-    if _is_home(wlan_eltern_1) or _is_home(wlan_eltern_2):
+    if parents_present:
         return PERS_PARENTS
 
     # 4) GPS home zone (fallback after the WLAN signals).
@@ -291,7 +330,14 @@ def compute_presence_personal(
     # event from the mere ABSENCE of signal: retain the last known presence so a
     # restart cannot tear down away-gated consumers. Fall back to abwesend only
     # when no presence has ever been observed yet.
-    if prev_personal in PRESENCE_PERSONAL_STATES:
+    # Retain, EXCEPT a stale bei_eltern that the parents router now positively
+    # contradicts (FLEET-264): a definite not_home must clear the stuck-parents
+    # state even without a fresh GPS this tick. Absence of tracker signal (HA
+    # restart → unavailable/None) is NOT not_home, so the restart-retain guard
+    # for bei_eltern is preserved.
+    if prev_personal in PRESENCE_PERSONAL_STATES and not (
+        prev_personal == PERS_PARENTS and parents_router_away
+    ):
         return prev_personal
     return PERS_AWAY
 

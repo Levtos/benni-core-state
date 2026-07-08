@@ -227,7 +227,11 @@ PROFILE_PREFILL: dict[str, dict[str, str]] = {
         CONF_GPS_PRIMARY: "device_tracker.benni_iphone_icloud3",
         CONF_GPS_SECONDARY: "device_tracker.iphone_von_benjamin",
         CONF_SSID_SOURCE: "sensor.iphone_von_benjamin_ssid",
-        CONF_WLAN_ELTERN_1: "binary_sensor.benni_bei_eltern_wlan",
+        # FLEET-264: harte Eltern-Evidenz aus der Eltern-FRITZ!Box (home = Handy
+        # im Eltern-WLAN, not_home = nicht). Löst den toten Slot
+        # `binary_sensor.benni_bei_eltern_wlan` (existiert nicht mehr) ab; der
+        # not_home-Wert vetoiert in der Logik die eingefrorene iOS-Parents-SSID.
+        CONF_WLAN_ELTERN_1: "device_tracker.iphone_benjamin_eltern_fb",
         # Proximity (Benjamin-spezifisch): Distanz in m + Richtung-Enum mit
         # Wert "towards" (= was die Logik für Annäherung erwartet). Aktiviert
         # Band/Preheat/Transition-nach-Distanz (in der Toolbox war das null).
