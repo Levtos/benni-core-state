@@ -3,6 +3,23 @@
 Alle nennenswerten Änderungen an dieser Integration. Neuester Eintrag oben.
 Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
+## [0.10.1] - 2026-07-08
+
+### Added
+- **UX-Contract-v1-Attribute** an `sensor.benni_core_state_live_status` (additiv,
+  für spätere React/Vite-Panels): `ux_contract_version` (=1), `status_kind`
+  (feiner maschinenlesbarer Typ), `color_role` (UI-Rollenname, keine Hex/CSS),
+  `display_order` (numerischer Rang), `source_entities` (zentrale Quell-Entities)
+  und `actions_supported` (vorerst `[]`).
+- `status_kind`/`color_role`/`display_order` werden aus der bestehenden
+  Live-Status-Priorität abgeleitet — keine neuen Enums.
+
+### Unchanged
+- **Sensor-State-Text unverändert** (weiterhin der deutsche Live-Status-Text).
+- Bestehende v0.10.0-Attribute bleiben erhalten; Private Time bleibt privacy-safe.
+- Keine Policy-, Activity-State-, Presence-Effective- oder Away-Gate-Änderung.
+- Keine Media-State-, Door-Policy- oder Frontend/Dashboard-Änderung.
+
 ## [0.10.0] - 2026-07-08
 
 ### Added
