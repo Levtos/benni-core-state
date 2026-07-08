@@ -1128,6 +1128,54 @@ _LIVE_PLATFORM_LABELS: dict[str, str] = {
     "pc": "PC",
 }
 
+# --- UX-Contract v1 (FLEET-259) -------------------------------------------
+# Explizite, maschinenlesbare Panel-Attribute. Rein additiv; leiten sich aus der
+# bestehenden Live-Status-Priorität ab — keine neuen Enums, keine State-Änderung.
+LIVE_UX_CONTRACT_VERSION = 1
+
+# Feiner status_kind (aus priority + Presence-Spezifika) → UI-Farbrolle (Name,
+# keine Hex/CSS) und numerischer display_order-Rang.
+_LIVE_COLOR_ROLE: dict[str, str] = {
+    "sleep": "sleep",
+    "waking": "sleep",
+    "away": "presence",
+    "parents": "presence",
+    "coming_home": "presence",
+    "leaving_home": "presence",
+    "private": "private",
+    "gaming": "media",
+    "entertainment": "media",
+    "music": "media",
+    "work": "work",
+    "household": "home",
+    "pc": "home",
+    "home": "home",
+    "unknown": "unknown",
+}
+_LIVE_DISPLAY_ORDER: dict[str, int] = {
+    "sleep": 10,
+    "waking": 10,
+    "away": 20,
+    "parents": 20,
+    "coming_home": 20,
+    "leaving_home": 20,
+    "private": 30,
+    "gaming": 40,
+    "entertainment": 50,
+    "music": 60,
+    "work": 70,
+    "household": 80,
+    "pc": 90,
+    "home": 100,
+    "unknown": 999,
+}
+# Zentrale Quell-Entities (Debug/Panel-Hinweis). Die Media-Quelle kommt dynamisch
+# aus dem konfigurierten Feed-Slot (media_activity_source) dazu — kein neuer Read.
+_LIVE_CORE_SOURCE_ENTITIES: tuple[str, ...] = (
+    "sensor.benni_core_state_activity_state",
+    "sensor.system_benni_core_state_presence_effective",
+)
+
 
 @dataclass(frozen=True)
 class LiveStatus:
@@ -1256,6 +1304,27 @@ def compute_live_status(
 
     is_private = priority == "private"
 
+    # ----- UX-Contract v1: feiner status_kind + abgeleitete Panel-Felder -----
+    # kind == priority, außer bei Presence-Overlays (feiner aufgeschlüsselt in
+    # exakt der Kaskaden-Reihenfolge parents > coming_home > leaving_home > away).
+    if priority == "presence":
+        if presence_personal == PERS_PARENTS:
+            kind = "parents"
+        elif presence_transition == TRANS_COMING_HOME:
+            kind = "coming_home"
+        elif presence_transition == TRANS_LEAVING_HOME:
+            kind = "leaving_home"
+        else:
+            kind = "away"
+    else:
+        kind = priority
+    color_role = _LIVE_COLOR_ROLE.get(kind, "unknown")
+    display_order = _LIVE_DISPLAY_ORDER.get(kind, 999)
+    source_entities = list(_LIVE_CORE_SOURCE_ENTITIES)
+    feed_source = _live_clean(media_activity_source)
+    if feed_source and feed_source not in source_entities:
+        source_entities.append(feed_source)
+
     # ----- subtitle (kurze technische Ergänzung; nie bei private) -----
     if priority in ("music", "gaming", "entertainment"):
         subtitle = " · ".join(
@@ -1298,5 +1367,12 @@ def compute_live_status(
         "icon_hint": icon,
         "priority": priority,
         "source": "benni_core_state.live_status",
+        # UX-Contract v1 (FLEET-259) — stabile Panel-Attribute (additiv).
+        "ux_contract_version": LIVE_UX_CONTRACT_VERSION,
+        "status_kind": kind,
+        "color_role": color_role,
+        "display_order": display_order,
+        "source_entities": source_entities,
+        "actions_supported": [],
     }
     return LiveStatus(state, attrs)
