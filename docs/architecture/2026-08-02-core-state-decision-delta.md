@@ -253,14 +253,17 @@ mehrere voneinander unabhängige Fakten und Kontexte zusammenfassen. Diese
 Ansicht besitzt keine eigene Wahrheit, entscheidet nichts und führt nichts
 aus.
 
-Core Contracts liefert Umweltfakten. Core State darf daraus einen
-domänenneutralen Kontext nur dann ableiten, wenn dessen Bedeutung für mehrere
-Verbraucher tatsächlich identisch ist — heute gilt das für `day_state`. Policies
+Core Contracts liefert die Umweltfakten. Core State darf daraus einen
+domänenneutralen **Umweltkontext** nur dann ableiten, wenn dessen Bedeutung für
+mehrere Verbraucher tatsächlich identisch ist; ein gemeinsamer kategorischer
+`thermal_context` sowie weitere Helligkeits- oder Sonnenlaststufen entstehen
+daher erst bei belegtem identischem Bedarf von mindestens zwei Verbrauchern.
+`day_state` ist **ebenfalls** ein gemeinsamer domänenneutraler
+Core-State-Kontext, wird aber **nicht** aus diesen Umweltfakten abgeleitet,
+sondern ausschließlich deterministisch aus dem Datum berechnet. Policies
 behalten domänenspezifische Regeln und Schwellen. „In der Wohnung ist es kalt“
 kann neutraler Core-State-Kontext sein; „es soll geheizt werden“ ist eine
-Climate-Policy-Entscheidung. Ein gemeinsamer kategorischer `thermal_context`
-sowie weitere Helligkeits- oder Sonnenlaststufen entstehen erst, wenn mindestens
-zwei Verbraucher nachweislich exakt dieselbe fachliche Bedeutung benötigen.
+Climate-Policy-Entscheidung.
 
 ### Benennung, Warden und Diagnostik
 
