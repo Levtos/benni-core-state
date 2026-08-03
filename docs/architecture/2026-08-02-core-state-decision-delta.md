@@ -37,11 +37,21 @@ Fleet-Entscheidung in `Levtos/control`.
 - Eine reine Batteriewarnung sperrt die Heizung nicht automatisch. Erst eine
   mangelnde Verlässlichkeit des zugehörigen Contracts hat diese
   Safety-Wirkung.
-- Für die Außentemperatur-Ableitung liefert L0 die Fakten Temperatur,
-  Luftfeuchtigkeit, Wind und Sonne. `thermal_context` beziehungsweise
-  `effective_outdoor_temperature` wird genau einmal in Core State abgeleitet.
-  Blind und Climate konsumieren diesen gemeinsamen Kontext; Climate ergänzt
-  nur heizungsspezifische Logik.
+- Für die Umweltfakten liefert **Core Contracts** verlässliche Werte
+  einschließlich Quelle, Freshness und Qualität, insbesondere reale
+  Außentemperatur, Luftfeuchtigkeit, Wind, Lux, Wetterzustand und Sonnenstand.
+  **Core State** darf daraus nur dann einen domänenneutralen Zustand ableiten,
+  wenn dessen Bedeutung für mehrere Verbraucher tatsächlich identisch ist. Ein
+  standardisierter neutraler `apparent_outdoor_temperature` kann später als
+  Zusatzwert vorgesehen werden; er erhält **keinen** erfundenen Solaraufschlag
+  aus Wetterzustand und Sonnenhöhe. Ein gemeinsamer kategorischer
+  `thermal_context` bleibt vertagt, bis mindestens zwei Verbraucher nachweislich
+  dieselbe fachliche Bedeutung benötigen. **Blind Control** und **Climate
+  Control** werden **nicht** gezwungen, denselben künstlich zusammengefassten
+  Temperaturwert zu verwenden: Blind entscheidet rollladenspezifisch über Heat,
+  Glare, Priorität und Zielposition; Climate entscheidet heizungsspezifisch über
+  Heizbedarf und Zielwerte einschließlich nur dort relevanter Effekte wie
+  Bodenplatte oder Prognose.
 
 ### Core State, Media und Activity
 
@@ -57,6 +67,42 @@ Fleet-Entscheidung in `Levtos/control`.
   aus Phase 1 ausgeschlossen. TV oder Musik begründen nie allein Besuch.
   `bei_eltern` ist kein Besuchshinweis; dort bereits laufende Musik darf
   weiterlaufen.
+
+### Domänensteuerung: State-/Domänen-Grenze und Blind Control
+
+Die Schichtengrenze gilt dauerhaft:
+
+| Ebene | Verantwortung |
+| --- | --- |
+| Core Contracts | verlässliche technische Fakten |
+| Core State / Media State | neutrale, bereits verstandene Zustände |
+| Domänen-Policy | fachliche Zielentscheidung innerhalb einer Domäne |
+| Apply | Soll-/Ist-Abgleich und Geräteausführung |
+
+States beschreiben, **was gerade der Fall ist**; die Domänen-Policy entscheidet,
+**was daraus in ihrer Domäne folgen soll**; Apply führt das technisch aus.
+Beispiel Blind: Media/Core State veröffentlicht den neutralen PC-/Gaming-
+Aktivitätszustand, Core Contracts/Core State liefert die verlässlichen
+Umweltfakten beziehungsweise neutralen Sonnenkontexte, Blind Policy verbindet
+dies mit ihren Prioritäten und Schwellen zur gewünschten Rollo-Position, und
+Blind Apply führt die Position aus und behandelt Soll-/Ist-Abgleich, Retries
+und Fehler.
+
+Die vorhandene Blind-Integration bleibt **eine einzige deploybare
+Home-Assistant-Integration** und wird architektonisch als **Blind Control**
+verstanden. Sie enthält intern getrennt:
+
+1. **Blind Policy** — die fachliche Zielentscheidung;
+2. **Blind Apply** — die technische Ausführung.
+
+Daraus folgt ausdrücklich: keine zusätzliche `blind_apply`-Integration; kein
+allgemeines `core_apply`; keine neue Environment-/Climate-State-Integration in
+Phase 1; keine technische Umbenennung von Repository, HA-Domain oder Entity-IDs
+allein wegen der Architekturbezeichnung „Blind Control". Policy und Apply dürfen
+innerhalb derselben Integration modular getrennt sein; eine Architekturschicht
+begründet nicht automatisch eine eigene Home-Assistant-Integration. Eine neue
+Integration entsteht nur bei eigenständiger fachlicher Domäne oder eigenständigem
+Lebenszyklus.
 
 ### Wake Planning und Profilwahl
 
@@ -175,12 +221,21 @@ oder eine geplante Weckzeit reichen in Phase 1 nicht für `inferred_sleep`.
 | Später Abend | 21:00–00:00 |
 
 `Morgen` bleibt ein sprachlicher Oberbegriff und ist keine zehnte Sensorphase.
-Die Leitfenster bilden das zivile Referenzprofil. Winter- und
-Sommersonnenwende sind die beiden Richtungswechsel des deterministischen
-Jahresrhythmus. Jeder variable Phasenübergang wandert mit 20 Sekunden pro
-Kalendertag in seine Saisonrichtung und wird unmittelbar aus dem Datum
-berechnet, sodass keine fortlaufende Drift entsteht. Tatsächlicher
-Sonnenaufgang, Solar-Noon, Wetter, Lux, Licht-, Rollo- sowie Bio-/Wake-Logik
+Die Leitfenster bilden das zivile Referenzprofil. `day_state` bleibt vollständig
+deterministisch und wird unmittelbar aus dem Datum berechnet; es entsteht keine
+fortlaufende Drift. 00:00 Uhr bleibt die feste zivile Tagesgrenze, und die
+Mittagsphase bleibt fachlich stabil um das Leitfenster 12:00–14:00 Uhr. Vom
+Winter- zum Sommerprofil beginnen die Morgenphasen schrittweise früher und enden
+die Abendphasen schrittweise später; vom Sommer- zum Winterprofil läuft die
+Bewegung spiegelbildlich zurück. Je näher ein Übergang an der Tagesmitte liegt,
+desto geringer ist seine saisonale Bewegung; die äußeren Tageskanten bewegen sich
+zwischen Winter- und Sommerprofil insgesamt ungefähr eine Stunde. Sonnenwenden
+bleiben die Richtungswechsel. Die genaue numerische Gewichtung, Clamps und
+Beispieltage zu Sonnenwenden und Äquinoktien gehören in den späteren
+Umsetzungsentwurf und seine Tests; sie dürfen die hier beschriebene Richtung und
+Phasenordnung nicht verändern. Die frühere pauschale Formulierung „jeder variable
+Übergang wandert mit 20 Sekunden pro Kalendertag" ist damit ersetzt. Tatsächlicher
+Sonnenaufgang, Solar-Noon, Wetter, Lux sowie Licht-, Rollo-, Bio- und Wake-Logik
 gehören nicht in diese Tagesphasenberechnung.
 
 ### Ambient-Abgrenzung
@@ -198,13 +253,14 @@ mehrere voneinander unabhängige Fakten und Kontexte zusammenfassen. Diese
 Ansicht besitzt keine eigene Wahrheit, entscheidet nichts und führt nichts
 aus.
 
-Core Contracts liefert Umweltfakten. Core State darf daraus neutrale,
-mehrfach benötigte Kontexte wie `day_state` und `thermal_context` ableiten.
-Policies behalten domänenspezifische Regeln und Schwellen. „In der Wohnung ist
-es kalt“ kann neutraler Core-State-Kontext sein; „es soll geheizt werden“ ist
-eine Climate-Policy-Entscheidung. Weitere gemeinsame Helligkeits- oder
-Sonnenlaststufen entstehen erst, wenn mehrere Verbraucher nachweislich exakt
-dieselbe fachliche Bedeutung benötigen.
+Core Contracts liefert Umweltfakten. Core State darf daraus einen
+domänenneutralen Kontext nur dann ableiten, wenn dessen Bedeutung für mehrere
+Verbraucher tatsächlich identisch ist — heute gilt das für `day_state`. Policies
+behalten domänenspezifische Regeln und Schwellen. „In der Wohnung ist es kalt“
+kann neutraler Core-State-Kontext sein; „es soll geheizt werden“ ist eine
+Climate-Policy-Entscheidung. Ein gemeinsamer kategorischer `thermal_context`
+sowie weitere Helligkeits- oder Sonnenlaststufen entstehen erst, wenn mindestens
+zwei Verbraucher nachweislich exakt dieselbe fachliche Bedeutung benötigen.
 
 ### Benennung, Warden und Diagnostik
 
@@ -239,8 +295,10 @@ dieselbe fachliche Bedeutung benötigen.
   Freshness und Qualität, Ergebnis beziehungsweise Ziel, Reason Code,
   Zeitstempel und optionaler `trace_id`; dies ist noch kein beschlossenes
   Schema.
-- **Gemeinsame Umweltkontexte:** zusätzliche Helligkeits- oder Sonnenlaststufen
-  nur bei belegtem identischem Bedarf mehrerer Verbraucher.
+- **Gemeinsame Umweltkontexte:** ein standardisierter neutraler
+  `apparent_outdoor_temperature` (ohne Solaraufschlag), ein kategorischer
+  `thermal_context` sowie Helligkeits-/Sonnenlaststufen nur bei belegtem
+  identischem Bedarf von mindestens zwei Verbrauchern.
 - **Warden-Bindung:** einzelne Öffnungen oder ein möglicher Sammel-Opening-
   Contract; zuständig ist der Core-Contracts-Kontext.
 
@@ -261,7 +319,7 @@ dieselbe fachliche Bedeutung benötigen.
 | Quellaussage | Heutige Entscheidung | Status / Folge |
 | --- | --- | --- |
 | Die Quelle bezeichnet sich als Vorschlag. | Die Quelle bleibt unverändert und nicht normativ; dieses Delta konsolidiert nur belegte Issue-Entscheidungen. | Klarstellung; keine Runtime- oder ADR-Änderung. |
-| §0/§3.1 ordnen `thermal_context` Core State zu; §5/D1 bezeichnet ihn teils als L0-Fakt. | L0 liefert Umweltfakten; Core State leitet `thermal_context` / `effective_outdoor_temperature` einmal zentral ab. | **Quellwiderspruch aufgelöst.** |
+| §0/§3.1 ordnen `thermal_context` Core State zu; §5/D1 bezeichnet ihn teils als L0-Fakt; eine frühere Delta-Fassung erzwang einen gemeinsamen `effective_outdoor_temperature`. | L0 liefert die Umweltfakten. Blind Control und Climate Control werden **nicht** auf einen gemeinsamen Temperaturwert gezwungen; jede entscheidet domänenspezifisch. Ein neutraler `apparent_outdoor_temperature` (ohne Solaraufschlag) und ein kategorischer `thermal_context` bleiben vertagt, bis ≥2 Verbraucher dieselbe Bedeutung brauchen. | **Frühere Delta-Aussage ersetzt (Kommentar 2026-08-03).** |
 | §1/§3 enthalten noch Rohquellen in einzelnen Zielwegen. | Core State und Media State beziehen relevante technische Signale über Core Contracts. | Eingabegrenze bestätigt und präzisiert. |
 | Die Quelle legt die Safety-Wirkung unsicherer Openings nicht fest. | Heizen nur bei frischem, zuverlässigem und positivem `closed`; Batteriewarnung allein sperrt nicht. | Contract-/Policy-Grenze entschieden. |
 | Die Quelle führt `ha_wake_planner` separat fort. | Wake Planning wird internes Core-State-Modul; die alte Integration bleibt bis zum Shadow-Cutover Migrationsquelle und wird danach archiviert. | **Abweichung zur Quelle.** |
@@ -270,7 +328,8 @@ dieselbe fachliche Bedeutung benötigen.
 | Die Quelle beschreibt Media State mit Core-State-Leserichtung. | Media State erkennt nur neutrale Medienfakten und liest keinen Core-State-Kontext. | **Abweichung zur Quelle; Kreis verhindert.** |
 | §5/D3 nennt Core State als Activity-Ziel, §6 lässt den Owner offen. | `activity_state` gehört verbindlich zu Core State. | **Offene Quellfrage entschieden.** |
 | §3.5 empfiehlt ein Ambient-Submodul und nennt eine Environment-Integration als Gabelung. | Kein Ambient-Owner, kein Pflicht-Submodul und keine Environment-Integration in Phase 1; Ambient höchstens als lesbare Ansicht. | Frühere Issue-Entscheidung ausdrücklich ersetzt. |
-| §3.5 skizziert ein hybrides astronomisches Tagesphasen-Modell. | Neun zivile Phasen mit deterministischem 20-Sekunden-Jahresrhythmus; keine astronomischen Tagesanker. | **Hypothese ersetzt und konkret entschieden.** |
+| §3.5 skizziert ein hybrides astronomisches Tagesphasen-Modell; eine frühere Delta-Fassung nannte einen pauschalen 20-Sekunden-Rhythmus. | Neun zivile Phasen, deterministisch aus dem Datum; 00:00 fix, Mittag stabil (12:00–14:00); Richtung Sommer beginnen Morgenphasen früher und enden Abendphasen später (spiegelbildlich zurück); Bewegung nahe der Tagesmitte geringer, äußere Kanten ~1 h; Sonnenwenden = Richtungswechsel; keine astronomischen Anker. Numerische Gewichtung/Clamps im Umsetzungsentwurf. | **Modell präzisiert; pauschale 20-s-Aussage ersetzt (Kommentar 2026-08-03).** |
+| Die Quelle nennt Blind Policy und Blind Apply als getrennte Schichten. | Die vorhandene Blind-Integration = **Blind Control**: eine deploybare Integration mit intern getrenntem Blind Policy + Blind Apply. Keine zusätzliche `blind_apply`-Integration, kein `core_apply`, keine Umbenennung allein wegen der Bezeichnung. | **Integrationsgrenze präzisiert.** |
 | §3.5/§5 schlagen gemeinsame Solar-/Heat-Kontexte vor. | Nur nachweislich mehrfach identisch benötigte neutrale Kontexte werden zentral abgeleitet; Policy-Schwellen bleiben domänenspezifisch. | Keine vorsorglichen Sammelbänder. |
 | Die Quelle enthält unterschiedliche Slugs mit und ohne `system_`. | Das alternative Präfix `system_` entfällt; konkrete IDs und Migration bleiben offen. | Naming-Grundsatz entschieden. |
 | Die Quelle enthält keinen Warden-Typ. | Warden bleibt optionale Core-Contracts-Vormerkung; Bindung und Umsetzung sind nicht Phase 1. | Additiv vorgemerkt und vertagt. |
