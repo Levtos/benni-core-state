@@ -64,9 +64,10 @@ Fleet-Entscheidung in `Levtos/control`.
   **Core State**. `Bio` / Core State bleibt Owner von `sleep`,
   `provisional_sleep`, `waking` und `awake`.
 - Die bisherige `ha_wake_planner`-Integration bleibt bis zum belegten
-  Shadow-Cutover als Migrationsquelle parallel bestehen. Ihre vorhandenen
-  Regeln für Werktag, Wochenende, Feiertage, Urlaub sowie Datums- und
-  Zeitraumregeln werden in das interne Modul übernommen. Erst nach
+  Shadow-Cutover als Migrationsquelle parallel bestehen. Ihre aktuell
+  vorhandene automatische Profilwahl sowie die Datums-, Zeitraum-, Feiertags-
+  und Urlaubslogik werden anhand von Code und Tests vollständig inventarisiert
+  und zunächst funktional 1:1 in das interne Modul migriert. Erst nach
   nachgewiesener funktionaler Gleichheit einschließlich Sonderfällen erfolgt
   der Cutover; danach wird die Integration entfernt und ihr Repository
   archiviert, nicht gelöscht.
@@ -222,6 +223,12 @@ dieselbe fachliche Bedeutung benötigen.
 
 ## Offen
 
+- **Wachsignale von `provisional_sleep` / `sleep`:** Die Phase-1-Grundregel
+  steht und wird nicht erneut geöffnet — `provisional_sleep` verwendet
+  grundsätzlich dieselben regulären Wachinteraktionen wie bestätigter `sleep`.
+  Vor der Umsetzung müssen nur die vorhandene Signalliste, ihre Priorisierung
+  und kontextabhängige Ausnahmen (zum Beispiel Kaffee als starkes Signal,
+  Tür-/Fensteraktionen kontextabhängig) exakt inventarisiert werden.
 - **Konkrete Entity-IDs und Mapping:** saubere Slugs ohne `system_`, technische
   Migration und Kompatibilitätsweg.
 - **Wake-Planner-Migration:** konkrete technische Übernahme, Entity-Mapping,
@@ -258,7 +265,7 @@ dieselbe fachliche Bedeutung benötigen.
 | §1/§3 enthalten noch Rohquellen in einzelnen Zielwegen. | Core State und Media State beziehen relevante technische Signale über Core Contracts. | Eingabegrenze bestätigt und präzisiert. |
 | Die Quelle legt die Safety-Wirkung unsicherer Openings nicht fest. | Heizen nur bei frischem, zuverlässigem und positivem `closed`; Batteriewarnung allein sperrt nicht. | Contract-/Policy-Grenze entschieden. |
 | Die Quelle führt `ha_wake_planner` separat fort. | Wake Planning wird internes Core-State-Modul; die alte Integration bleibt bis zum Shadow-Cutover Migrationsquelle und wird danach archiviert. | **Abweichung zur Quelle.** |
-| Die Quelle enthält vorhandene Wake-Planungslogik, aber nicht den vollständigen Zielvertrag. | Bestehende Werktag-/Wochenend-, Feiertags-, Urlaubs- und Datumslogik wird übernommen; Urlaub/Feiertag stufen Werktage auf Wochenende um. | Migration fachlich präzisiert; Technik offen. |
+| Die Quelle enthält vorhandene Wake-Planungslogik, aber nicht den vollständigen Zielvertrag. | Die vorhandene automatische Profilwahl sowie Datums-, Zeitraum-, Feiertags- und Urlaubslogik werden anhand von Code und Tests vollständig inventarisiert und zunächst funktional 1:1 migriert; Urlaub/Feiertag stufen Werktage auf Wochenende um. | Migrationsumfang fachlich präzisiert; technische Übernahme offen. |
 | Die Quelle nennt `provisional_sleep` und `inferred_sleep`, lässt Trigger und Übergänge offen. | Phase 1 trennt manuellen Schlaf, Schutzkorridor und `waking`; `inferred_sleep` ist Phase 2. Korridor, harte Grenze und Waking-Lebenszyklus sind festgelegt. | Phase-1-Spec fachlich konkretisiert. |
 | Die Quelle beschreibt Media State mit Core-State-Leserichtung. | Media State erkennt nur neutrale Medienfakten und liest keinen Core-State-Kontext. | **Abweichung zur Quelle; Kreis verhindert.** |
 | §5/D3 nennt Core State als Activity-Ziel, §6 lässt den Owner offen. | `activity_state` gehört verbindlich zu Core State. | **Offene Quellfrage entschieden.** |
