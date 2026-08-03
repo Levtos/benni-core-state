@@ -53,6 +53,10 @@ Fleet-Entscheidung in `Levtos/control`.
   verbindlich zu Core State.
 - Es gibt kein `Core Apply`: Core State veröffentlicht Zustände; Policies
   entscheiden in ihrer jeweiligen Domäne und Apply-Module führen aus.
+- Ein Besucher-/Freundesmodus gehört später fachlich zu Core State, bleibt aber
+  aus Phase 1 ausgeschlossen. TV oder Musik begründen nie allein Besuch.
+  `bei_eltern` ist kein Besuchshinweis; dort bereits laufende Musik darf
+  weiterlaufen.
 
 ### Wake Planning und Profilwahl
 
