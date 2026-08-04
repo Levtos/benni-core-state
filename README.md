@@ -19,9 +19,10 @@ und Restore-on-Restart.
 
 * Die Presence-/Bio-/Activity-Regeln wurden konservativ übernommen (`logic.py`,
   `models.py` bleiben reine, testbare Compute-Module).
-* Der **Day-State** nutzt neun stabile Phasen mit saisonal verschobenen
-  Grenzwerten. Die Grenzen werden ausschließlich aus dem Datum berechnet;
-  Solar-Noon, Sonne, Lux, Wetter und Wake-Signale sind keine Eingaben.
+* Der **Day-State** nutzt neun stabile Phasen mit einem saisonalen
+  Kalender-Akkordeon. Die Grenzen werden ausschließlich aus lokalem Datum und
+  lokaler Zivilzeit berechnet; Solar-Noon, Sonne, Lux, Wetter und Wake-Signale
+  sind keine Eingaben.
 * Geändert wurde **nur die technische Verdrahtung**: eigene HA-Domain, eigener
   Config-/Options-Flow (statt Umbrella-Modulauswahl), eigene Services, eigene
   Storage-Keys, eigene `unique_id`/Entity-Namespaces.
@@ -90,13 +91,19 @@ statt auf `unavailable` zu gehen.
 * **Bio-State** ist die einzige Wahrheit für sleep/waking/awake. PC/PS5/Kaffee/Tür
   sind Wake-Indizien (nur in Nicht-Nacht-Phasen wirksam), `wake_needed` nudgt nur
   `sleep → waking`.
-* **Day-State** folgt neun kalender-/datumsermittelten Phasen: 00:00 bleibt
-  fest, `midday` bleibt 12:00–14:00, und Morgen-/Abendgrenzen bewegen sich
-  symmetrisch zwischen dem Winter- und Sommerprofil. Die Implementierung nutzt
-  feste zivile Referenzanker für Sonnenwenden und Äquinoktien, aber keine
-  astronomischen oder HA-Umweltquellen.
-  Die `day_state`-Attribute enthalten Datum, aktive Phase, effektive Grenzen,
-  Saisonparameter, Reason und Modellversion.
+* **Day-State** folgt neun kalender-/datumsermittelten Phasen. Keine Grenze,
+  einschließlich `00:00`, `midday` oder `14:00`, ist dauerhaft fest. Zwischen
+  Winter- und Sommersonnenwende wächst der gesamte Nicht-Nacht-Block mit einer
+  Zielgröße von 60 Sekunden je Kalendertag; 40 % der Ausdehnung liegen am
+  Morgen, 60 % am Abend. Alle sieben Nicht-Nacht-Phasen werden gleichmäßig
+  länger, die zwei Nachtphasen bleiben ungefähr im Verhältnis 2:1 und bilden
+  das saisonale Akkordeon. Sonnenwenden sind die Richtungswechsel, Äquinoktien
+  liegen in der Mitte des jeweiligen Weges. Die Berechnung ist nicht
+  akkumulativ, verwendet die tatsächlichen Kalenderintervalle und erzeugt die
+  Grenzen zuerst als lokale Wandzeit; CET/CEST verursacht daher keinen sichtbaren
+  einstündigen Sprung in den lokalen Phasen.
+  Die `day_state`-Attribute enthalten Datum, aktive Phase, effektive lokale
+  Grenzen, Saisonparameter, Reason und Modellversion.
 * **Activity** bleibt klein; `sleep`/`waking` spiegeln den Bio-State, TV/Gaming
   etc. sind Media-Kontext (Attribut), kein Activity-Hauptstate.
 
@@ -141,6 +148,24 @@ Auflösung je Slot:  Override (entry.data / später Custom-UX)  ▶  Profil-Map 
 Entity-Auswahl und Schwellwerte folgen dem Toolbox-Muster. Es gibt keine
 Solar-Noon-Entity-Bindung: Die Day-State-Berechnung ist vollständig
 datumsermittelt.
+
+### Media-/Light-Phasen: Ist-/Soll-Differenz
+
+Die bestehenden Consumer verwenden weiterhin ihre historische Acht-Phasen-
+Slugmenge. Media Policy führt in den [Volume-Baselines](https://github.com/Levtos/benni_media_policy/blob/main/custom_components/benni_media_policy/const.py)
+`early_morning`, `late_morning`, `forenoon`, `afternoon`, `early_evening`,
+`late_evening`, `early_night` und `late_night`; das Subwoofer-Fenster verwendet
+ebenfalls `late_morning` bis `late_evening` plus einen separaten lokalen
+09:00-Floor. Light Policy führt in seiner [Phasenmatrix](https://github.com/Levtos/benni_light_policy/blob/main/custom_components/benni_light_policy/const.py)
+dieselbe historische Menge und erzeugt daraus Theme-/Preset-Keys.
+
+Der aktuelle Core-State-Sollvertrag lautet dagegen:
+`early_night`, `late_night`, `early_morning`, `forenoon`, `midday`,
+`afternoon`, `late_afternoon`, `evening`, `late_evening`. Die semantische
+Zuordnung der historischen `late_morning`-/`early_evening`-Keys sowie die
+Consumer-Cutovers bleiben bei den jeweiligen Consumer-Issues und dem
+Mapping-Issue [Levtos/benni-core-state#25](https://github.com/Levtos/benni-core-state/issues/25);
+dieses Repository führt dafür keine stillen Aliase oder Cutovers aus.
 
 ### Schwellwerte (Defaults / Range)
 

@@ -13,9 +13,8 @@ from HA wiring lets us pin them down with a small test suite.
 """
 from __future__ import annotations
 
-import calendar
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from .const import (
@@ -852,10 +851,10 @@ def compute_bio_state(
 
 
 # The implementation deliberately uses a small civil calendar model rather
-# than astronomical inputs.  The 00:00 boundary and the 12:00–14:00 midday
-# block are fixed; the other boundaries move symmetrically around them.
-DAY_STATE_MODEL_VERSION = "calendar-seasonal-v1"
-DAY_STATE_REASON = "date_seasonal_calendar"
+# than astronomical inputs.  Every boundary belongs to the local civil clock;
+# the seasonal accordion is recomputed from the calendar date on every tick.
+DAY_STATE_MODEL_VERSION = "calendar-seasonal-accordion-v2"
+DAY_STATE_REASON = "date_seasonal_accordion"
 
 DAY_PHASE_ORDER = (
     DAY_EARLY_NIGHT,
@@ -869,145 +868,156 @@ DAY_PHASE_ORDER = (
     DAY_LATE_EVENING,
 )
 
-_DAY_PHASE_BASE_MINUTES = {
-    DAY_EARLY_NIGHT: 0,
-    DAY_LATE_NIGHT: 4 * 60,
-    DAY_EARLY_MORNING: 6 * 60,
-    DAY_FORENOON: 9 * 60,
-    DAY_MIDDAY: 12 * 60,
-    DAY_AFTERNOON: 14 * 60,
-    DAY_LATE_AFTERNOON: 16 * 60,
-    DAY_EVENING: 18 * 60,
-    DAY_LATE_EVENING: 21 * 60,
+_SECONDS_PER_DAY = 24 * 60 * 60
+_WINTER_NIGHT_SECONDS = 6 * 60 * 60
+_NON_NIGHT_PHASE_COUNT = 7
+
+# The civil winter profile is the reference.  From winter to summer the
+# complete non-night block gains 182 minutes: 182 calendar days × 60 seconds.
+# The exact rate is derived from each real anchor interval, so leap years keep
+# both solstice endpoints stable instead of accumulating a one-day drift.
+DAY_STATE_TARGET_SECONDS_PER_DAY = 60.0
+DAY_STATE_SOLSTICE_EXTENSION_SECONDS = 182 * DAY_STATE_TARGET_SECONDS_PER_DAY
+DAY_STATE_MORNING_SHARE = 0.40
+DAY_STATE_EVENING_SHARE = 0.60
+DAY_STATE_NIGHT_RATIO = "2:1"
+
+_DAY_PHASE_BASE_DURATIONS_SECONDS = {
+    DAY_EARLY_MORNING: 3 * 60 * 60,
+    DAY_FORENOON: 3 * 60 * 60,
+    DAY_MIDDAY: 2 * 60 * 60,
+    DAY_AFTERNOON: 2 * 60 * 60,
+    DAY_LATE_AFTERNOON: 2 * 60 * 60,
+    DAY_EVENING: 3 * 60 * 60,
+    DAY_LATE_EVENING: 3 * 60 * 60,
 }
 
-# Total winter-to-summer movement is approximately one hour at the outer
-# edges.  Movement decreases toward the fixed midday block.
-DAY_PHASE_SEASONAL_AMPLITUDE_MINUTES = {
-    DAY_EARLY_NIGHT: 0,
-    DAY_LATE_NIGHT: 30,
-    DAY_EARLY_MORNING: 20,
-    DAY_FORENOON: 10,
-    DAY_MIDDAY: 0,
-    DAY_AFTERNOON: 0,
-    DAY_LATE_AFTERNOON: 10,
-    DAY_EVENING: 20,
-    DAY_LATE_EVENING: 30,
-}
-
-# Explicit civil clamps keep the nine phases ordered even if the seasonal
-# parameters are changed later.  Current amplitudes stay inside these bounds.
-DAY_PHASE_CLAMPS_MINUTES = {
-    DAY_EARLY_NIGHT: (0, 0),
-    DAY_LATE_NIGHT: (3 * 60 + 30, 4 * 60 + 30),
-    DAY_EARLY_MORNING: (5 * 60 + 40, 6 * 60 + 20),
-    DAY_FORENOON: (8 * 60 + 50, 9 * 60 + 10),
-    DAY_MIDDAY: (12 * 60, 12 * 60),
-    DAY_AFTERNOON: (14 * 60, 14 * 60),
-    DAY_LATE_AFTERNOON: (15 * 60 + 50, 16 * 60 + 10),
-    DAY_EVENING: (17 * 60 + 40, 18 * 60 + 20),
-    DAY_LATE_EVENING: (20 * 60 + 30, 21 * 60 + 30),
-}
-
-_MORNING_PHASES = frozenset({
-    DAY_LATE_NIGHT, DAY_EARLY_MORNING, DAY_FORENOON,
-})
-_EVENING_PHASES = frozenset({
-    DAY_LATE_AFTERNOON, DAY_EVENING, DAY_LATE_EVENING,
-})
-
-# Fixed civil reference anchors.  They are not astronomical calculations;
-# solstices are the direction changes and equinoxes are the neutral midpoint.
-_SEASON_ANCHORS = (
-    (80.0, "spring_equinox", 0.0),
-    (172.0, "summer_solstice", 1.0),
-    (266.0, "autumn_equinox", 0.0),
-    (355.0, "winter_solstice", -1.0),
-    (445.0, "spring_equinox", 0.0),
+_NON_NIGHT_PHASES = (
+    DAY_EARLY_MORNING,
+    DAY_FORENOON,
+    DAY_MIDDAY,
+    DAY_AFTERNOON,
+    DAY_LATE_AFTERNOON,
+    DAY_EVENING,
+    DAY_LATE_EVENING,
 )
 
 
-def _calendar_day_index(value: datetime) -> float:
-    """Return a leap-year-independent day index for deterministic repetition."""
-    day = float(value.timetuple().tm_yday)
-    if value.month == 2 and value.day == 29:
-        return 59.5
-    if calendar.isleap(value.year) and value.month > 2:
-        return day - 1.0
-    return day
-
-
-def _seasonal_parameters(local_now: datetime) -> tuple[float, str]:
-    day = _calendar_day_index(local_now)
-    # January and February belong to the winter-solstice → spring-equinox
-    # segment that started in the previous civil year.
-    if day < _SEASON_ANCHORS[0][0]:
-        day += 365.0
-
-    for (start_day, start_name, start_factor), (end_day, end_name, end_factor) in zip(
-        _SEASON_ANCHORS, _SEASON_ANCHORS[1:]
-    ):
-        if day <= end_day:
-            span = end_day - start_day
-            progress = (day - start_day) / span
-            factor = start_factor + (end_factor - start_factor) * progress
-            if day == start_day:
-                segment = start_name
-            elif day == end_day:
-                segment = end_name
-            else:
-                segment = f"{start_name}_to_{end_name}"
-            return max(-1.0, min(1.0, factor)), segment
-
-    # The final anchor is the next spring equinox; the loop always returns for
-    # a valid calendar day, but keep a defensive fallback for future changes.
-    return -1.0, "winter_solstice"
-
-
-def _phase_offset_minutes(phase: str, seasonal_factor: float) -> int:
-    amplitude = DAY_PHASE_SEASONAL_AMPLITUDE_MINUTES[phase]
-    if phase in _MORNING_PHASES:
-        return int(round(-amplitude * seasonal_factor))
-    if phase in _EVENING_PHASES:
-        return int(round(amplitude * seasonal_factor))
-    return 0
-
-
-def _today_at_minutes(anchor: datetime, minutes: int) -> datetime:
-    return anchor.replace(
-        hour=minutes // 60,
-        minute=minutes % 60,
-        second=0,
-        microsecond=0,
+def _season_anchor_points(year: int) -> tuple[tuple[date, str, float], ...]:
+    """Return civil seasonal anchors around the requested calendar year."""
+    return (
+        (date(year - 1, 12, 21), "winter_solstice", 0.0),
+        (date(year, 3, 21), "spring_equinox", 0.5),
+        (date(year, 6, 21), "summer_solstice", 1.0),
+        (date(year, 9, 23), "autumn_equinox", 0.5),
+        (date(year, 12, 21), "winter_solstice", 0.0),
+        (date(year + 1, 3, 21), "spring_equinox", 0.5),
     )
 
 
+def _seasonal_parameters(local_now: datetime) -> tuple[float, float, str, int]:
+    """Return extension seconds, seasonal fraction, segment, and span days."""
+    current = local_now.date()
+    anchors = _season_anchor_points(current.year)
+    for (start, start_name, start_fraction), (end, end_name, end_fraction) in zip(
+        anchors, anchors[1:]
+    ):
+        if current <= end:
+            span_days = (end - start).days
+            progress = (current - start).days / span_days
+            fraction = start_fraction + (end_fraction - start_fraction) * progress
+            if current == start:
+                segment = start_name
+            elif current == end:
+                segment = end_name
+            else:
+                segment = f"{start_name}_to_{end_name}"
+            return (
+                DAY_STATE_SOLSTICE_EXTENSION_SECONDS * fraction,
+                fraction,
+                segment,
+                span_days,
+            )
+
+    raise AssertionError(f"No seasonal interval for {current.isoformat()}")
+
+
+def _phase_boundary_seconds(extension_seconds: float) -> dict[str, float]:
+    """Build one local wall-clock profile from the seasonal accordion size."""
+    morning_extension = extension_seconds * DAY_STATE_MORNING_SHARE
+    evening_extension = extension_seconds * DAY_STATE_EVENING_SHARE
+    night_seconds = _WINTER_NIGHT_SECONDS - extension_seconds
+    night_inner_split = night_seconds * (2 / 3)
+    non_night_extension = extension_seconds / _NON_NIGHT_PHASE_COUNT
+
+    starts: dict[str, float] = {
+        DAY_EARLY_NIGHT: evening_extension,
+        DAY_LATE_NIGHT: evening_extension + night_inner_split,
+        DAY_EARLY_MORNING: evening_extension + night_seconds,
+    }
+    cursor = starts[DAY_EARLY_MORNING]
+    previous = DAY_EARLY_MORNING
+    for phase in _NON_NIGHT_PHASES[1:]:
+        cursor += _DAY_PHASE_BASE_DURATIONS_SECONDS[previous] + non_night_extension
+        starts[phase] = cursor
+        previous = phase
+
+    # The unreturned endpoint is the next day's early_night.  Keeping this
+    # identity explicit makes the 40/60 split and the seven equal extensions
+    # reviewable without introducing a tenth published phase.
+    endpoint = cursor + _DAY_PHASE_BASE_DURATIONS_SECONDS[previous] + non_night_extension
+    expected_endpoint = _SECONDS_PER_DAY + evening_extension
+    if abs(endpoint - expected_endpoint) > 1e-6:
+        raise AssertionError("non-night accordion does not close at next early_night")
+    return {phase: starts[phase] for phase in DAY_PHASE_ORDER}
+
+
+def _at_local_wall(anchor: datetime, seconds: float) -> datetime:
+    """Create a local wall-clock datetime without UTC/DST arithmetic."""
+    wall = datetime(anchor.year, anchor.month, anchor.day) + timedelta(seconds=seconds)
+    return wall.replace(tzinfo=anchor.tzinfo)
+
+
 def compute_day_phase_starts(local_now: datetime) -> dict[str, datetime]:
-    """Return the nine deterministic calendar phase boundaries for the date."""
-    seasonal_factor, _ = _seasonal_parameters(local_now)
-    starts: dict[str, datetime] = {}
-    for phase in DAY_PHASE_ORDER:
-        base = _DAY_PHASE_BASE_MINUTES[phase]
-        shifted = base + _phase_offset_minutes(phase, seasonal_factor)
-        lower, upper = DAY_PHASE_CLAMPS_MINUTES[phase]
-        effective = max(lower, min(upper, shifted))
-        starts[phase] = _today_at_minutes(local_now, effective)
-    return starts
+    """Return nine ordered local wall-clock boundaries for the calendar date.
+
+    ``early_night`` may therefore begin after local midnight.  Until that
+    boundary, ``compute_day_state`` correctly carries the prior day's
+    ``late_evening`` phase across midnight.
+    """
+    extension_seconds, _, _, _ = _seasonal_parameters(local_now)
+    boundary_seconds = _phase_boundary_seconds(extension_seconds)
+    return {
+        phase: _at_local_wall(local_now, boundary_seconds[phase])
+        for phase in DAY_PHASE_ORDER
+    }
 
 
 def compute_day_state(local_now: datetime) -> str:
     starts = compute_day_phase_starts(local_now)
-    current = DAY_EARLY_NIGHT
+    wall_now = local_now.replace(tzinfo=None)
+    current = (
+        DAY_LATE_EVENING
+        if wall_now < starts[DAY_EARLY_NIGHT].replace(tzinfo=None)
+        else DAY_EARLY_NIGHT
+    )
     for phase in DAY_PHASE_ORDER:
-        if local_now >= starts[phase]:
+        if wall_now >= starts[phase].replace(tzinfo=None):
             current = phase
     return current
 
 
 def compute_day_phase_diagnostics(local_now: datetime, active_phase: str) -> dict[str, Any]:
     """Return owner-local date, boundary, season, and model diagnostics."""
-    seasonal_factor, season_segment = _seasonal_parameters(local_now)
+    extension_seconds, seasonal_fraction, season_segment, interval_days = (
+        _seasonal_parameters(local_now)
+    )
     starts = compute_day_phase_starts(local_now)
+    phase_durations = {
+        phase: _DAY_PHASE_BASE_DURATIONS_SECONDS[phase]
+        + extension_seconds / _NON_NIGHT_PHASE_COUNT
+        for phase in _NON_NIGHT_PHASES
+    }
     return {
         "active_phase": active_phase,
         "date": local_now.date().isoformat(),
@@ -1016,23 +1026,27 @@ def compute_day_phase_diagnostics(local_now: datetime, active_phase: str) -> dic
         "model_version": DAY_STATE_MODEL_VERSION,
         "reason": DAY_STATE_REASON,
         "phase_starts": {
-            phase: starts[phase].strftime("%H:%M:%S") for phase in DAY_PHASE_ORDER
+            phase: starts[phase].isoformat() for phase in DAY_PHASE_ORDER
         },
         "season_parameters": {
-            "factor": round(seasonal_factor, 6),
+            "fraction": round(seasonal_fraction, 9),
             "segment": season_segment,
+            "anchor_interval_days": interval_days,
+            "target_extension_seconds_per_day": DAY_STATE_TARGET_SECONDS_PER_DAY,
+            "non_night_extension_seconds": round(extension_seconds, 6),
+            "morning_share": DAY_STATE_MORNING_SHARE,
+            "evening_share": DAY_STATE_EVENING_SHARE,
+            "night_ratio": DAY_STATE_NIGHT_RATIO,
             "anchors": {
+                "winter_solstice": "12-21",
                 "spring_equinox": "03-21",
                 "summer_solstice": "06-21",
                 "autumn_equinox": "09-23",
-                "winter_solstice": "12-21",
             },
-            "amplitude_minutes": dict(DAY_PHASE_SEASONAL_AMPLITUDE_MINUTES),
-            "offset_minutes": {
-                phase: _phase_offset_minutes(phase, seasonal_factor)
-                for phase in DAY_PHASE_ORDER
+            "phase_duration_seconds": {
+                phase: round(phase_durations[phase], 6)
+                for phase in _NON_NIGHT_PHASES
             },
-            "clamps_minutes": dict(DAY_PHASE_CLAMPS_MINUTES),
         },
     }
 

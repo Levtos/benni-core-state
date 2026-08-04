@@ -1,6 +1,6 @@
 # Core State: Entscheidungsdelta zur Fleet-Zielweg-Quelle
 
-**Stand:** 2026-08-03
+**Stand:** 2026-08-04
 
 **Status:** Dokumentierter Entscheidungsstand für [Issue #21](https://github.com/Levtos/benni-core-state/issues/21); keine Umsetzung, kein Cutover und kein Live-Nachweis  
 **Bezug:** [unveränderte Quellnotiz](2026-08-02-fleet-zielweg-source.md)
@@ -15,9 +15,13 @@ weder eine Änderung der laufenden Integration noch eine neue kanonische
 Fleet-ADR.
 
 Spätere Kommentare ersetzen frühere Aussagen nur dort, wo sie dies
-ausdrücklich benennen. Dieses Dokument konsolidiert den dadurch entstandenen
-aktuellen Stand. Es ersetzt weder `control/docs/` noch die spätere kanonische
-Fleet-Entscheidung in `Levtos/control`.
+ausdrücklich benennen. Die Fachkorrektur in
+[Levtos/benni-core-state#24, Kommentar 5177459676](https://github.com/Levtos/benni-core-state/issues/24#issuecomment-5177459676)
+ersetzt für `day_state` die frühere feste-Mitternacht-/stabile-Mittags-
+Formulierung und die vorherige Amplituden-Geometrie. Dieses Dokument
+konsolidiert den dadurch entstandenen aktuellen Stand. Es ersetzt weder
+`control/docs/` noch die spätere kanonische Fleet-Entscheidung in
+`Levtos/control`.
 
 ## Beschlossen
 
@@ -221,22 +225,63 @@ oder eine geplante Weckzeit reichen in Phase 1 nicht für `inferred_sleep`.
 | Später Abend | 21:00–00:00 |
 
 `Morgen` bleibt ein sprachlicher Oberbegriff und ist keine zehnte Sensorphase.
-Die Leitfenster bilden das zivile Referenzprofil. `day_state` bleibt vollständig
-deterministisch und wird unmittelbar aus dem Datum berechnet; es entsteht keine
-fortlaufende Drift. 00:00 Uhr bleibt die feste zivile Tagesgrenze, und die
-Mittagsphase bleibt fachlich stabil um das Leitfenster 12:00–14:00 Uhr. Vom
-Winter- zum Sommerprofil beginnen die Morgenphasen schrittweise früher und enden
-die Abendphasen schrittweise später; vom Sommer- zum Winterprofil läuft die
-Bewegung spiegelbildlich zurück. Je näher ein Übergang an der Tagesmitte liegt,
-desto geringer ist seine saisonale Bewegung; die äußeren Tageskanten bewegen sich
-zwischen Winter- und Sommerprofil insgesamt ungefähr eine Stunde. Sonnenwenden
-bleiben die Richtungswechsel. Die genaue numerische Gewichtung, Clamps und
-Beispieltage zu Sonnenwenden und Äquinoktien gehören in den späteren
-Umsetzungsentwurf und seine Tests; sie dürfen die hier beschriebene Richtung und
-Phasenordnung nicht verändern. Die frühere pauschale Formulierung „jeder variable
-Übergang wandert mit 20 Sekunden pro Kalendertag" ist damit ersetzt. Tatsächlicher
-Sonnenaufgang, Solar-Noon, Wetter, Lux sowie Licht-, Rollo-, Bio- und Wake-Logik
-gehören nicht in diese Tagesphasenberechnung.
+Die Leitfenster bilden das zivile Winter-Referenzprofil. `day_state` bleibt
+vollständig deterministisch und wird unmittelbar aus dem lokalen Kalenderdatum
+berechnet; es entsteht keine fortlaufende Drift. Die neun Grenzen bewegen sich
+alle saisonal: Zwischen Winter- und Sommersonnenwende wächst der gesamte
+Nicht-Nacht-Block mit einer Zielgröße von 60 Sekunden je tatsächlichem
+Kalendertag. Die Ausdehnung wird mit 40 % auf den Morgen und 60 % auf den Abend
+verteilt. Die sieben Nicht-Nacht-Phasen werden jeweils um denselben Anteil
+länger; die zwei Nachtphasen bleiben ungefähr im Verhältnis 2:1. Die Nacht ist
+damit das Akkordeon: `early_night` kann nach lokaler Mitternacht beginnen und
+trägt die vorherige `late_evening`-Phase bis zu dieser Grenze über Mitternacht.
+
+Formal ist `E(d)` die aus den tatsächlichen Kalenderintervallen interpolierte
+Gesamtausdehnung in Sekunden, mit `E(winter_solstice) = 0` und
+`E(summer_solstice) = 10920` (182 Minuten). Für ein lokales Datum gilt:
+
+```text
+early_night      = 00:00 + 0.60 * E(d)
+early_morning    = 06:00 - 0.40 * E(d)
+late_night       = early_night + 2/3 * (early_morning - early_night)
+jede Nicht-Nacht-Dauer = zivile Winterdauer + E(d) / 7
+```
+
+Die Äquinoktien liegen auf halbem Weg zwischen dem jeweiligen Winter- und
+Sommerprofil; die Sonnenwenden sind die Richtungswechsel. Die gerundeten
+Sommergrenzen sind `01:49`, `03:48`, `04:47`, `08:13`, `11:39`, `14:05`,
+`16:31`, `18:57`, `22:23`; sie sind Referenzwerte und kein Tagesakkumulator.
+Normal- und Schaltjahre verwenden ihre tatsächlichen Intervalllängen, damit
+beide Solstitien-Anker stabil bleiben. Die Phasen werden zuerst als lokale
+Wandzeit bestimmt und erst für technische Zeitstempel in UTC überführt; CET/
+CEST darf deshalb keinen sichtbaren einstündigen Sprung der lokalen Grenzen
+erzeugen. Tatsächlicher Sonnenaufgang, Solar-Noon, Wetter, Lux sowie Licht-,
+Rollo-, Bio- und Wake-Logik gehören nicht in diese Tagesphasenberechnung.
+
+Die frühere feste `00:00`-Grenze, das stabile `12:00–14:00`-Mittagsfenster, die
+alte `30/20/10`-Geometrie und die pauschale Formulierung „jeder variable
+Übergang wandert mit 20 Sekunden pro Kalendertag" sind durch Kommentar
+5177459676 ausdrücklich verworfen und hier nur als überholte Aussagen
+referenziert, nicht als gültiger Stand.
+
+### Media-/Light-Phasen: Ist-/Soll-Differenz ohne Cutover
+
+Die bestehenden Consumer führen im Ist weiterhin die historische
+Acht-Phasen-Slugmenge. [Media Policy](https://github.com/Levtos/benni_media_policy/blob/main/custom_components/benni_media_policy/const.py)
+verwendet `early_morning`, `late_morning`, `forenoon`, `afternoon`,
+`early_evening`, `late_evening`, `early_night` und `late_night`; sein
+Subwoofer-Fenster nutzt `late_morning` bis `late_evening` plus einen separaten
+09:00-Floor. [Light Policy](https://github.com/Levtos/benni_light_policy/blob/main/custom_components/benni_light_policy/const.py)
+verwendet dieselbe historische Phasebasis für Theme-/Preset-Keys.
+
+Der Sollvertrag von Core State ist dagegen
+`early_night`, `late_night`, `early_morning`, `forenoon`, `midday`,
+`afternoon`, `late_afternoon`, `evening`, `late_evening`. Die semantische
+Zuordnung der historischen Keys und alle Consumer-Cutovers bleiben den
+jeweiligen Consumer-Issues sowie
+[Levtos/benni-core-state#25](https://github.com/Levtos/benni-core-state/issues/25)
+vorbehalten. #24 führt keine stillen Aliase, Rebinds oder Consumer-Änderungen
+aus.
 
 ### Ambient-Abgrenzung
 
@@ -331,7 +376,7 @@ Climate-Policy-Entscheidung.
 | Die Quelle beschreibt Media State mit Core-State-Leserichtung. | Media State erkennt nur neutrale Medienfakten und liest keinen Core-State-Kontext. | **Abweichung zur Quelle; Kreis verhindert.** |
 | §5/D3 nennt Core State als Activity-Ziel, §6 lässt den Owner offen. | `activity_state` gehört verbindlich zu Core State. | **Offene Quellfrage entschieden.** |
 | §3.5 empfiehlt ein Ambient-Submodul und nennt eine Environment-Integration als Gabelung. | Kein Ambient-Owner, kein Pflicht-Submodul und keine Environment-Integration in Phase 1; Ambient höchstens als lesbare Ansicht. | Frühere Issue-Entscheidung ausdrücklich ersetzt. |
-| §3.5 skizziert ein hybrides astronomisches Tagesphasen-Modell; eine frühere Delta-Fassung nannte einen pauschalen 20-Sekunden-Rhythmus. | Neun zivile Phasen, deterministisch aus dem Datum; 00:00 fix, Mittag stabil (12:00–14:00); Richtung Sommer beginnen Morgenphasen früher und enden Abendphasen später (spiegelbildlich zurück); Bewegung nahe der Tagesmitte geringer, äußere Kanten ~1 h; Sonnenwenden = Richtungswechsel; keine astronomischen Anker. Numerische Gewichtung/Clamps im Umsetzungsentwurf. | **Modell präzisiert; pauschale 20-s-Aussage ersetzt (Kommentar 2026-08-03).** |
+| §3.5 skizziert ein hybrides astronomisches Tagesphasen-Modell; frühere Delta-Fassungen nannten feste Mitternachts-/Mittagsgrenzen, `30/20/10`-Amplituden oder einen pauschalen 20-Sekunden-Rhythmus. | Neun zivile Phasen, deterministisch aus dem lokalen Datum; alle Grenzen bewegen sich im saisonalen Akkordeon. Der Nicht-Nacht-Block wächst zwischen Winter und Sommer mit der Zielgröße 60 Sekunden je Kalendertag, verteilt 40 % morgens und 60 % abends; die sieben Nicht-Nacht-Phasen werden gleichmäßig länger, die Nachtphasen bleiben ungefähr 2:1. Solstitien sind Richtungswechsel, Äquinoktien liegen halbwegs dazwischen, keine astronomischen Eingaben. Lokale Wandzeit verhindert einen sichtbaren CET/CEST-Sprung. | **Fachkorrektur Kommentar 5177459676 ersetzt den früheren Stand; technische Umsetzung und Referenztests in Levtos/benni-core-state#24.** |
 | Die Quelle nennt Blind Policy und Blind Apply als getrennte Schichten. | Die vorhandene Blind-Integration = **Blind Control**: eine deploybare Integration mit intern getrenntem Blind Policy + Blind Apply. Keine zusätzliche `blind_apply`-Integration, kein `core_apply`, keine Umbenennung allein wegen der Bezeichnung. | **Integrationsgrenze präzisiert.** |
 | §3.5/§5 schlagen gemeinsame Solar-/Heat-Kontexte vor. | Nur nachweislich mehrfach identisch benötigte neutrale Kontexte werden zentral abgeleitet; Policy-Schwellen bleiben domänenspezifisch. | Keine vorsorglichen Sammelbänder. |
 | Die Quelle enthält unterschiedliche Slugs mit und ohne `system_`. | Das alternative Präfix `system_` entfällt; konkrete IDs und Migration bleiben offen. | Naming-Grundsatz entschieden. |
