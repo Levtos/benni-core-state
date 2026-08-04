@@ -15,7 +15,7 @@ from custom_components.benni_core_state.const import (
     DAY_AFTERNOON,
     DAY_EARLY_MORNING,
     DAY_EARLY_NIGHT,
-    DAY_LATE_MORNING,
+    DAY_FORENOON,
     PERS_AWAY,
     PERS_HOME,
 )
@@ -150,12 +150,12 @@ def test_early_morning_stale_indicator_does_not_break_sleep():
     assert awake_ts is None
 
 
-def test_late_morning_pc_indicator_breaks_sleep_without_wake_needed():
+def test_forenoon_pc_indicator_breaks_sleep_without_wake_needed():
     """Ein frisch aktiver PC ist ebenfalls ein Wake-Signal."""
     state, _, awake_ts = _bio(
         BIO_SLEEP,
         indicators={**NO_IND, "pc": True},
-        day_state=DAY_LATE_MORNING,
+        day_state=DAY_FORENOON,
         prev_sleep_start=NOW - timedelta(hours=4),
         indicator_active_since={
             **{key: None for key in NO_IND},
