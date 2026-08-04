@@ -149,12 +149,6 @@ DAY_STATES = [
     DAY_LATE_EVENING,
 ]
 
-# Compatibility names for code that imported the former eight-phase constants.
-# The values are intentionally the new canonical labels and are not published
-# as additional states.
-DAY_LATE_MORNING = DAY_FORENOON
-DAY_EARLY_EVENING = DAY_LATE_AFTERNOON
-
 # Day context
 DC_WERKTAG = "werktag"
 DC_WOCHENENDE = "wochenende"
