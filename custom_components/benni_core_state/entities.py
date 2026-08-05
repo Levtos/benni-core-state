@@ -29,7 +29,6 @@ from .const import (
     DAY_STATES,
     DEFAULT_PROFILE,
     DOMAIN,
-    PERS_AWAY,
     PRESENCE_BAND_STATES,
     PRESENCE_EFFECTIVE_STATES,
     PRESENCE_HOUSEHOLD_STATES,
@@ -41,6 +40,7 @@ from .const import (
 from . import logic
 from .coordinator import BenniCoreStateCoordinator, coordinator_from_hass
 from .models import ComputedState
+from .wake_planning import WAKE_STATES
 
 
 @dataclass(frozen=True)
@@ -48,8 +48,9 @@ class _Desc:
     key: str
     name: str
     options: list[str] | None
-    value_fn: Callable[[ComputedState], str]
+    value_fn: Callable[[ComputedState], Any]
     attr_key: str | None = None
+    device_class: SensorDeviceClass | None = None
 
 
 SENSORS: tuple[_Desc, ...] = (
@@ -75,6 +76,11 @@ SENSORS: tuple[_Desc, ...] = (
           ACTIVITY_STATES, lambda s: s.activity_state, "activity_state"),
     _Desc("master_context", "Master Context",
           None, lambda s: s.master_context, "master_context"),
+    _Desc("wake_state", "Wake State",
+          list(WAKE_STATES),
+          lambda s: s.wake_state, "wake_state"),
+    _Desc("next_wake", "Next Wake",
+          None, lambda s: s.next_wake, "next_wake", SensorDeviceClass.TIMESTAMP),
     # UX-/Anzeige-Sensor (kein Enum, keine Policy): sprechender deutscher Status.
     _Desc("live_status", "Live Status",
           None, lambda s: s.live_status, "live_status"),
@@ -107,6 +113,8 @@ async def async_get_entities(
         return [
             PreheatActiveBinarySensor(coord, entry),
             PresenceAwayBinarySensor(coord, entry),
+            WakeNeededShadowBinarySensor(coord, entry),
+            HolidayActiveShadowBinarySensor(coord, entry),
         ]
     return []
 
@@ -130,7 +138,7 @@ class BenniCoreStateSensor(CoordinatorEntity[BenniCoreStateCoordinator], SensorE
             self._attr_options = desc.options
 
     @property
-    def native_value(self) -> str | None:
+    def native_value(self) -> Any:
         if self.coordinator.data is None:
             return None
         return self._desc.value_fn(self.coordinator.data)
@@ -222,4 +230,65 @@ class PresenceAwayBinarySensor(
     @property
     def available(self) -> bool:
         # Mirror the presence sensors: stay available on documented defaults.
+        return self.coordinator.last_update_success or self.coordinator.data is not None
+
+
+class WakeNeededShadowBinarySensor(
+    CoordinatorEntity[BenniCoreStateCoordinator], BinarySensorEntity
+):
+    """Read-only canonical #26 shadow projection of the wake window."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Wake Needed"
+    _attr_device_class = BinarySensorDeviceClass.RUNNING
+
+    def __init__(
+        self, coordinator: BenniCoreStateCoordinator, entry: ConfigEntry
+    ) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = unique_id(entry.entry_id, "wake_needed")
+        self._attr_device_info = _device_info(entry)
+
+    @property
+    def is_on(self) -> bool:
+        data = self.coordinator.data
+        return bool(data is not None and data.wake_needed)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        data = self.coordinator.data
+        return data.attrs.get("wake_needed", {}) if data is not None else {}
+
+    @property
+    def available(self) -> bool:
+        return self.coordinator.last_update_success or self.coordinator.data is not None
+
+
+class HolidayActiveShadowBinarySensor(
+    CoordinatorEntity[BenniCoreStateCoordinator], BinarySensorEntity
+):
+    """Read-only canonical #26 holiday/day-off shadow projection."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Holiday Active"
+
+    def __init__(
+        self, coordinator: BenniCoreStateCoordinator, entry: ConfigEntry
+    ) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = unique_id(entry.entry_id, "holiday_active")
+        self._attr_device_info = _device_info(entry)
+
+    @property
+    def is_on(self) -> bool:
+        data = self.coordinator.data
+        return bool(data is not None and data.holiday_active)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        data = self.coordinator.data
+        return data.attrs.get("holiday_active", {}) if data is not None else {}
+
+    @property
+    def available(self) -> bool:
         return self.coordinator.last_update_success or self.coordinator.data is not None

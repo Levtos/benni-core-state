@@ -66,6 +66,12 @@ class ComputedState:
     day_context: str
     activity_state: str
     master_context: str
+    # Read-only #26 Wake-Planning-Shadow outputs.  They are separate from the
+    # existing Bio inputs so the shadow cannot influence Bio or any consumer.
+    wake_state: str
+    next_wake: Any | None
+    wake_needed: bool | None
+    holiday_active: bool
     attrs: dict[str, dict[str, Any]] = field(default_factory=dict)
     # Presence-Effective Activity-Hold (PR3). presence_effective/-_transition
     # oben tragen bereits den (ggf. gehaltenen) Wert; diese Felder machen den

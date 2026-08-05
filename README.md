@@ -69,6 +69,10 @@ Die folgende Tabelle zeigt die Route **Benni**:
 | `sensor.benni_core_state_day_context` | enum | `werktag`, `wochenende`, `frei` |
 | `sensor.benni_core_state_activity_state` | enum | `sleep`, `waking`, `idle`, `free_time`, `work_home`, `work_away`, `private_time`, `household` |
 | `sensor.benni_core_state_master_context` | string | komposit `presence.bio.day_state.day_context.activity` |
+| `sensor.benni_core_state_wake_state` | enum | `scheduled`, `skipped`, `overridden`, `holiday`, `inactive` (read-only Shadow) |
+| `sensor.benni_core_state_next_wake` | timestamp | lokaler nächster Wake-Zeitpunkt (read-only Shadow) |
+| `binary_sensor.benni_core_state_wake_needed` | running | inklusives konfiguriertes Wake-Fenster (read-only Shadow) |
+| `binary_sensor.benni_core_state_holiday_active` | binary | Holiday-/Wochenend-Projektion (read-only Shadow) |
 
 Jeder Sensor trägt seine Rohdaten/Schwellen als `extra_state_attributes`
 (Tracker-Werte, Distanz, Radien, Wake-Indizien, Preheat-Quelle …). Presence- und
@@ -212,6 +216,13 @@ zu laufen:
   **keine Kollision** mit `bennis_toolbox` / `benni_context`.
 * Alt bleibt produktiv; neu läuft daneben zum 1:1-Vergleich der States.
 
+Der interne Wake-Planning-Shadow läuft nach #26 ebenfalls additiv parallel zum
+alten `ha_wake_planner`. Er nutzt die lokalen Kalender-/Zeitgrenzen und den
+kanonischen `day_state`, schaltet aber keinen Consumer um. Die Diagnose zeigt
+Ergebnis, Quelle, Quality/Freshness, Profil, Reason, Floor, Fenster und den
+Vergleichsstatus. `provisional_sleep`, `inferred_sleep`, `waking` und das
+Core-State-Bio-Modell sind ausdrücklich nicht Teil dieses Wake-Planners.
+
 Empfehlung: beide Sensorgruppen eine Weile nebeneinander beobachten, bevor
 Konsumenten (Automationen, YAML in `einhornzentrale`) umgestellt werden.
 
@@ -240,4 +251,5 @@ python -m pytest tests/ -q
 Abgedeckt: Bio-Persistenz & -Regeln inkl. Day-State-Gating, Presence inkl.
 `bei_eltern`, GPS-Stale-Fallback, Band-Hysterese, Transition, Preheat
 (Hysterese/Sustain/Max-Dauer), Activity-Priorität, alle neun Day-State-Phasen,
-Saisonextreme, Äquinoktien, Jahreswechsel und Day-Context-Buckets.
+Saisonextreme, Äquinoktien, Jahreswechsel, Day-Context-Buckets und die
+fokussierten Wake-Planning-Shadow-Grenzen.

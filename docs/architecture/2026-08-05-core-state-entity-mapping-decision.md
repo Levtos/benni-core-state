@@ -4,7 +4,7 @@
 **Datum:** 2026-08-05
 **Issue:** [Levtos/benni-core-state#25](https://github.com/Levtos/benni-core-state/issues/25)
 **Agent:** agent:codex
-**Basis:** GitHub main bei cd1db2fd0670c2695a653db1bbdb5eb7648bb6d0
+**Basis:** GitHub main bei 852086442a3719b73497dfd28004f7d014f477f3
 
 ## Beobachtung
 
@@ -19,9 +19,9 @@ wake_needed und holiday_active. Das vollständige Ist-Inventar steht in
 
 - Der korrigierte Neun-Phasen-Vertrag kommt aus
   [Core State #24](https://github.com/Levtos/benni-core-state/issues/24) und dem
-  ungemergten [PR #30](https://github.com/Levtos/benni-core-state/pull/30).
-- Die Basis dieses Issues enthält deshalb noch den alten Runtime-Day-State; #25
-  überschreibt #24 nicht.
+  gemergten [PR #30](https://github.com/Levtos/benni-core-state/pull/30).
+- Die verifizierte Basis dieses Folgestands enthält den korrigierten Runtime-
+  Day-State; #25 überschreibt #24 nicht.
 - wake_needed ist ein inklusives Wake-Fenster-Boolean, kein Bio- oder
   waking-Signal.
 - #34 implementiert kein provisional_sleep, inferred_sleep, waking und kein
@@ -37,8 +37,8 @@ wake_needed und holiday_active. Das vollständige Ist-Inventar steht in
 - unique_id folgt benni_core_state_<entry_id>_<entity_suffix>.
 - provisional_sleep und waking gehören zum bestehenden Bio-State-Vertrag und
   erzeugen keine zusätzlichen veröffentlichten States in #25.
-- Wake-Outputs erhalten reservierte clean Zielmappings, werden aber erst in #26
-  berechnet und registriert.
+- Wake-Outputs verwenden die reservierten clean Zielmappings und werden in #26
+  additiv als Shadow berechnet und registriert; Consumer bleiben unverändert.
 - Holiday wird als Wake-Context/Output getrennt von automatic_day_profile
   dokumentiert; vacation erhält mangels belegter eigener Old-Semantik noch keine
   öffentliche Entity.
@@ -59,10 +59,11 @@ wake_needed und holiday_active. Das vollständige Ist-Inventar steht in
   aufgelöst und geloggt.
 - Der bestehende live_status-Attributpfad erhält Mapping-Version und
   mapping_diagnostics additiv.
-- Es gibt keine Registry-Mutation, keinen Consumer-Cutover, keine HA-Aktion,
-  keinen neuen Combined-Output und keine #26-Implementierung.
+- Es gibt keine Registry-Mutation außerhalb der normalen additiven Entity-
+  Veröffentlichung, keinen Consumer-Cutover, keine HA-Aktion und keinen neuen
+  Combined-Output. Die #26-Shadow-Implementierung ist separat dokumentiert.
 - Die vollständige Tabelle, Legacy-Klassifikation und Consumer-Allowlist steht
-  in [2026-08-05-core-state-entity-mapping.md](https://github.com/Levtos/benni-core-state/blob/agent/core-state-entity-mappings/docs/architecture/2026-08-05-core-state-entity-mapping.md).
+  in [2026-08-05-core-state-entity-mapping.md](https://github.com/Levtos/benni-core-state/blob/main/docs/architecture/2026-08-05-core-state-entity-mapping.md).
 
 ## Tests
 
@@ -75,10 +76,10 @@ unbekannte und unentschiedene Mapping-Schlüssel.
 
 ## Risiken und offene Gates
 
-- PR #30 und PR #36 bleiben Draft und ungemergt.
-- Der Runtime-Day-State muss nach dem separaten #24-Gate aktualisiert werden.
-- #26 muss Wake-/Holiday-/Vacation-Source, Quality, Reason, Timestamp und
-  Shadow-Parität implementieren.
+- PR #30 ist gemergt; der Wake-Planner-Draft [PR #36](https://github.com/Levtos/ha_wake_planner/pull/36)
+  bleibt die belegte, unveränderte Migrationsreferenz.
+- #26 liefert Wake-/Holiday-/Vacation-Source, Quality, Reason, Timestamp und
+  Shadow-Parität additiv; die Abnahme bleibt ein separates Gate.
 - Consumer-Repositories bleiben unverändert; ihre Rebinds sind durch die
   Allowlist und die jeweiligen Issues gated.
 - Testing/Tests Pass ist weder Merge noch Live, Live Verified, Cutover, Release

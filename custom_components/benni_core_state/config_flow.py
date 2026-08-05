@@ -51,8 +51,12 @@ from .const import (
     CONF_SSID_SOURCE,
     CONF_TRACKER_FRESHNESS,
     CONF_TRANSITION_HOLD,
+    CONF_WAKE_FLOOR,
+    CONF_HOLIDAY_ACTIVE,
     CONF_WAKE_NEEDED,
     CONF_WAKE_NEXT,
+    CONF_WAKE_STATE,
+    CONF_WAKE_WINDOW_MINUTES,
     CONF_WLAN_BENNI,
     CONF_WLAN_ELTERN_1,
     CONF_WLAN_ELTERN_2,
@@ -62,6 +66,8 @@ from .const import (
     DEFAULT_PREHEAT_DURATION,
     DEFAULT_PREHEAT_RADIUS,
     DEFAULT_TRACKER_FRESHNESS,
+    DEFAULT_WAKE_FLOOR,
+    DEFAULT_WAKE_WINDOW_MINUTES,
     CONF_PROFILE,
     DEFAULT_PROFILE,
     DEFAULT_TRANSITION_HOLD,
@@ -97,11 +103,12 @@ _ENTITY_SLOTS: tuple[tuple[str, list[str]], ...] = (
     (CONF_WLAN_ELTERN_2, ["device_tracker", "binary_sensor", "input_boolean"]),
     (CONF_PROXIMITY_DISTANCE, ["sensor", "proximity"]),
     (CONF_PROXIMITY_DIRECTION, ["sensor", "proximity"]),
-    # NB: wake_next / wake_needed werden hier nur als HA-Entities konfiguriert;
-    # die Logik dahinter liegt im Wake-Planner. Benni Core State konsumiert sie
-    # als Inputs, ohne Wake-Planner-Code zu importieren.
+    # Legacy-Outputs bleiben als Vergleichs-/Input-Entities konfigurierbar.
+    # Der #26-Shadow berechnet separat; kein Consumer wird auf ihn umgebunden.
     (CONF_WAKE_NEXT, ["sensor", "input_datetime"]),
     (CONF_WAKE_NEEDED, ["binary_sensor", "input_boolean"]),
+    (CONF_WAKE_STATE, ["sensor"]),
+    (CONF_HOLIDAY_ACTIVE, ["binary_sensor", "input_boolean"]),
     # core_devices liefert die Geräte-Wahrheit als Master-Sensor
     # (`active`/`off`-State) → `sensor` muss als Domain wählbar sein, sonst filtert der
     # Flow die richtige Entität raus (FLEET: PC-Wake-Fehlbindung 2026-06-12).
@@ -149,6 +156,14 @@ def _thresholds_schema(defaults: dict[str, Any]) -> vol.Schema:
             vol.All(vol.Coerce(int), vol.Range(min=60, max=86400)),
         vol.Required(CONF_TRANSITION_HOLD, default=defaults.get(CONF_TRANSITION_HOLD, DEFAULT_TRANSITION_HOLD)):
             vol.All(vol.Coerce(int), vol.Range(min=10, max=3600)),
+        vol.Required(
+            CONF_WAKE_WINDOW_MINUTES,
+            default=defaults.get(CONF_WAKE_WINDOW_MINUTES, DEFAULT_WAKE_WINDOW_MINUTES),
+        ): vol.All(vol.Coerce(int), vol.Range(min=0, max=120)),
+        vol.Required(
+            CONF_WAKE_FLOOR,
+            default=defaults.get(CONF_WAKE_FLOOR, DEFAULT_WAKE_FLOOR),
+        ): vol.All(vol.Coerce(str), vol.Match(r"^(?:[01]\d|2[0-3]):[0-5]\d$")),
     })
 
 

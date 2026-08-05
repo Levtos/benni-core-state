@@ -40,6 +40,10 @@ CONF_PROXIMITY_DISTANCE = "proximity_distance"
 CONF_PROXIMITY_DIRECTION = "proximity_direction"
 CONF_WAKE_NEXT = "wake_next"
 CONF_WAKE_NEEDED = "wake_needed"
+# Read-only Legacy-Inputs für den #26-Shadow. Diese IDs sind im #25-Mapping
+# bereits belegt; sie sind keine neuen kanonischen Zielpfade.
+CONF_WAKE_STATE = "wake_state"
+CONF_HOLIDAY_ACTIVE = "holiday_active"
 CONF_PC_ACTIVE = "pc_active"
 CONF_PS5_ACTIVE = "ps5_active"
 CONF_COFFEE_ACTIVE = "coffee_active"
@@ -71,6 +75,8 @@ CONF_HYSTERESIS_M = "hysteresis_m"
 CONF_PREHEAT_DURATION = "preheat_duration"
 CONF_TRACKER_FRESHNESS = "tracker_freshness"
 CONF_TRANSITION_HOLD = "transition_hold"
+CONF_WAKE_WINDOW_MINUTES = "wake_window_minutes"
+CONF_WAKE_FLOOR = "wake_floor"
 
 # --- Defaults ----------------------------------------------------------------
 
@@ -81,6 +87,8 @@ DEFAULT_HYSTERESIS_M = 50
 DEFAULT_PREHEAT_DURATION = 900    # seconds (15 min cap)
 DEFAULT_TRACKER_FRESHNESS = 1800  # seconds (30 min)
 DEFAULT_TRANSITION_HOLD = 120     # seconds
+DEFAULT_WAKE_WINDOW_MINUTES = 5   # existing Wake-Planner window
+DEFAULT_WAKE_FLOOR = "06:00"      # absolute local civil-time floor
 
 # --- State enums -------------------------------------------------------------
 
@@ -241,6 +249,9 @@ PROFILE_PREFILL: dict[str, dict[str, str]] = {
         CONF_PC_ACTIVE: "sensor.benni_master_pc",
         CONF_WAKE_NEEDED: "binary_sensor.wake_planner_benni_wake_needed",
         CONF_WAKE_NEXT: "sensor.wake_planner_benni_next_wake",
+        CONF_WAKE_STATE: "sensor.wake_planner_benni_wake_state",
+        CONF_HOLIDAY_ACTIVE: "binary_sensor.wake_planner_benni_holiday_active",
+        CONF_HOLIDAY_SENSOR: "binary_sensor.wake_planner_benni_holiday_active",
         # FLEET-36 Cut-over: vom Toolbox-Modul benni_media_context auf den
         # extrahierten L1-Feeder benni_media_state (profil-getriebener Slug).
         CONF_MEDIA_CONTEXT: "sensor.benni_media_state_media_context",

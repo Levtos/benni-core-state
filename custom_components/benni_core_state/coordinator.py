@@ -38,6 +38,7 @@ from .const import (
     CONF_GAMING_PLATFORM,
     CONF_GPS_PRIMARY,
     CONF_GPS_SECONDARY,
+    CONF_HOLIDAY_ACTIVE,
     CONF_HOLIDAY_SENSOR,
     CONF_HOMEOFFICE_PING,
     CONF_HOME_RADIUS,
@@ -61,6 +62,9 @@ from .const import (
     CONF_TRANSITION_HOLD,
     CONF_WAKE_NEEDED,
     CONF_WAKE_NEXT,
+    CONF_WAKE_STATE,
+    CONF_WAKE_FLOOR,
+    CONF_WAKE_WINDOW_MINUTES,
     CONF_PROFILE,
     CONF_WLAN_BENNI,
     CONF_WLAN_ELTERN_1,
@@ -73,6 +77,8 @@ from .const import (
     DEFAULT_PROFILE,
     DEFAULT_TRACKER_FRESHNESS,
     DEFAULT_TRANSITION_HOLD,
+    DEFAULT_WAKE_FLOOR,
+    DEFAULT_WAKE_WINDOW_MINUTES,
     DOMAIN,
     PERS_PARENTS,
     PROFILE_PREFILL,
@@ -83,6 +89,7 @@ from .const import (
 )
 from .models import ComputedState, PersistentState
 from .mapping import MAPPING_CONTRACT_VERSION, mapping_diagnostics
+from . import wake_planning
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -179,7 +186,7 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
             CONF_SSID_SOURCE,
             CONF_WLAN_ELTERN_1, CONF_WLAN_ELTERN_2,
             CONF_PROXIMITY_DISTANCE, CONF_PROXIMITY_DIRECTION,
-            CONF_WAKE_NEXT, CONF_WAKE_NEEDED,
+            CONF_WAKE_NEXT, CONF_WAKE_NEEDED, CONF_WAKE_STATE, CONF_HOLIDAY_ACTIVE,
             CONF_PC_ACTIVE, CONF_PS5_ACTIVE, CONF_COFFEE_ACTIVE, CONF_DOOR_WAKE,
             CONF_MEDIA_CONTEXT, CONF_PRIVATE_SOURCE, CONF_HOMEOFFICE_PING,
             CONF_HOLIDAY_SENSOR, CONF_HOUSEHOLD_SOURCE,
@@ -247,9 +254,200 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
 
     def _read_bool(self, key: str) -> bool:
         val, _, _ = self._read_entity(key)
-        if val is None:
-            return False
-        return str(val).lower() in ("on", "true", "home", "1", "yes", "active")
+        return _state_is_true(val)
+
+    def _compute_wake_shadow(
+        self,
+        *,
+        local_now: datetime,
+        day_state: str,
+        wake_state_raw: str | None,
+        wake_state_ts: datetime | None,
+        wake_state_attrs: dict[str, Any],
+        wake_next_raw: str | None,
+        legacy_wake_needed: bool | None,
+        legacy_holiday_raw: str | None,
+        legacy_holiday_ts: datetime | None,
+        holiday_raw: str | None,
+        holiday_ts: datetime | None,
+    ) -> tuple[wake_planning.WakePlan, wake_planning.ShadowComparison]:
+        """Build the #26 shadow from selected inputs without changing Bio."""
+
+        parsed_rules = wake_planning.parse_rules(wake_state_attrs.get("rules"))
+        rules = parsed_rules.rules or wake_planning.default_rules()
+        rules_quality = "fresh" if parsed_rules.rules else (
+            "invalid" if parsed_rules.invalid_reasons and "rules_missing" not in parsed_rules.invalid_reasons
+            else "missing"
+        )
+        rules_source = self._entity_id(CONF_WAKE_STATE) or "internal:default_rules"
+
+        window_raw = self._opt(
+            CONF_WAKE_WINDOW_MINUTES,
+            wake_state_attrs.get("wake_window_minutes", DEFAULT_WAKE_WINDOW_MINUTES),
+        )
+        try:
+            window_minutes = int(window_raw)
+            if not 0 <= window_minutes <= 120:
+                raise ValueError
+            window_quality = "fresh"
+        except (TypeError, ValueError):
+            window_minutes = None
+            window_quality = "invalid"
+
+        floor_raw = self._opt(CONF_WAKE_FLOOR, DEFAULT_WAKE_FLOOR)
+        floor_time = wake_planning.parse_time(floor_raw)
+        floor_quality = "fresh" if floor_time is not None else "invalid"
+
+        holiday_valid = holiday_raw not in (None, "", "unknown", "unavailable")
+        holiday_quality = "fresh" if holiday_valid else "unavailable"
+        holidays = wake_planning.parse_manual_holiday_dates(
+            wake_state_attrs.get("manual_holiday_dates"),
+            local_now.date(),
+            local_now.date() + timedelta(days=wake_planning.DEFAULT_HORIZON_DAYS),
+        )
+        if holiday_valid and _state_is_true(holiday_raw):
+            holidays[local_now.date()] = wake_planning.WakeHoliday(
+                is_holiday=True,
+                name="Holiday calendar",
+                source="configured:holiday_sensor",
+                quality="fresh",
+            )
+
+        calendar_events = wake_state_attrs.get("calendar_events")
+        calendar_decisions = (
+            wake_planning.calendar_decisions_from_events(calendar_events)
+            if isinstance(calendar_events, (list, tuple))
+            else {}
+        )
+        calendar_status = wake_planning.WakeInputStatus(
+            name="calendar",
+            source="L1:calendar_input" if calendar_decisions else "not_configured",
+            quality="fresh" if calendar_decisions else "not_configured",
+            available=bool(calendar_decisions),
+            optional=True,
+            reason="calendar_markers_selected_by_L1" if calendar_decisions else "no_calendar_input",
+        )
+
+        conflict_behavior = wake_state_attrs.get(
+            "calendar_conflict_behavior", wake_planning.CONFLICT_WARN_ONLY
+        )
+        if conflict_behavior not in wake_planning.CONFLICT_BEHAVIORS:
+            conflict_behavior = wake_planning.CONFLICT_WARN_ONLY
+        holiday_behavior = wake_state_attrs.get(
+            "holiday_behavior", wake_planning.HOLIDAY_SKIP
+        )
+        if holiday_behavior not in {
+            wake_planning.HOLIDAY_SKIP,
+            wake_planning.HOLIDAY_WEEKEND_PROFILE,
+        }:
+            holiday_behavior = wake_planning.HOLIDAY_SKIP
+        try:
+            routine_duration = int(
+                wake_state_attrs.get(
+                    "routine_duration_minutes",
+                    wake_state_attrs.get("routine_duration", 60),
+                )
+            )
+        except (TypeError, ValueError):
+            routine_duration = 60
+
+        source_status = (
+            wake_planning.WakeInputStatus(
+                name="local_time",
+                source="home_assistant:local_civil_time",
+                quality="fresh",
+            ),
+            wake_planning.WakeInputStatus(
+                name="calendar_date",
+                source="home_assistant:local_calendar_date",
+                quality="fresh",
+            ),
+            wake_planning.WakeInputStatus(
+                name="day_state",
+                source="internal:logic.compute_day_state",
+                quality="fresh" if day_state else "missing",
+                available=bool(day_state),
+                reason="canonical_day_state_input",
+            ),
+            wake_planning.WakeInputStatus(
+                name="rules",
+                source=rules_source,
+                quality=rules_quality,
+                available=bool(parsed_rules.rules),
+                observed_at=wake_state_ts,
+                reason=(
+                    "legacy_rules_selected"
+                    if parsed_rules.rules
+                    else "default_rules_fallback;invalid_or_missing_legacy_rules"
+                ),
+            ),
+            wake_planning.WakeInputStatus(
+                name="holiday",
+                source=self._entity_id(CONF_HOLIDAY_SENSOR) or "not_configured",
+                quality=holiday_quality,
+                available=holiday_valid,
+                observed_at=holiday_ts,
+                optional=True,
+                reason="holiday_and_vacation_use_one_day_off_contract",
+            ),
+            wake_planning.WakeInputStatus(
+                name="wake_window",
+                source=(
+                    "wake_planner:configured_window"
+                    if wake_state_attrs.get("wake_window_minutes") is not None
+                    else "core_state:configured_window"
+                ),
+                quality=window_quality,
+                available=window_minutes is not None,
+                reason="inclusive_window_for_wake_needed",
+            ),
+            wake_planning.WakeInputStatus(
+                name="floor",
+                source="core_state:configured_absolute_floor",
+                quality=floor_quality,
+                available=floor_time is not None,
+                reason="local_06_floor_is_independent_of_day_state_and_sunrise",
+            ),
+            calendar_status,
+        )
+        inputs = wake_planning.WakePlanningInputs(
+            now=local_now,
+            day_state=day_state,
+            rules=rules,
+            calendar_decisions=calendar_decisions,
+            holidays=holidays,
+            wake_window_minutes=window_minutes,
+            routine_duration_minutes=routine_duration,
+            floor_time=floor_time,
+            calendar_conflict_behavior=conflict_behavior,
+            holiday_behavior=holiday_behavior,
+            source_status=source_status,
+        )
+        plan = wake_planning.plan_wake(inputs)
+
+        legacy_holiday_valid = legacy_holiday_raw not in (
+            None,
+            "",
+            "unknown",
+            "unavailable",
+        )
+        legacy = wake_planning.legacy_reference_from_values(
+            state=wake_state_raw,
+            wake_time=wake_state_attrs.get("wake_time"),
+            next_wake=wake_next_raw,
+            wake_needed=legacy_wake_needed,
+            holiday_active=(
+                _state_is_true(legacy_holiday_raw) if legacy_holiday_valid else None
+            ),
+            now=local_now,
+            source=self._entity_id(CONF_WAKE_STATE) or "legacy:ha_wake_planner",
+            quality="fresh" if wake_state_raw not in (None, "unknown", "unavailable") else "unavailable",
+            manual_control_active=bool(
+                wake_state_attrs.get("skip_active")
+                or wake_state_attrs.get("override_time")
+            ),
+        )
+        return plan, wake_planning.compare_shadow(plan, legacy)
 
     # --------------------------------------------------------------- compute
 
@@ -364,8 +562,11 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
             preheat_started.isoformat() if preheat_started else None
         )
 
-        wake_needed = self._read_bool(CONF_WAKE_NEEDED)
+        wake_needed_raw, _, _ = self._read_entity(CONF_WAKE_NEEDED)
+        wake_needed = _state_is_true(wake_needed_raw)
         wake_next_raw, _, _ = self._read_entity(CONF_WAKE_NEXT)
+        wake_state_raw, wake_state_ts, wake_state_attrs = self._read_entity(CONF_WAKE_STATE)
+        legacy_holiday_raw, legacy_holiday_ts, _ = self._read_entity(CONF_HOLIDAY_ACTIVE)
         wake_indicator_sources = {
             "pc": CONF_PC_ACTIVE,
             "ps5": CONF_PS5_ACTIVE,
@@ -408,8 +609,27 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
             awake_start.isoformat() if awake_start else None
         )
 
-        holiday = self._read_bool(CONF_HOLIDAY_SENSOR)
+        holiday_raw, holiday_ts, _ = self._read_entity(CONF_HOLIDAY_SENSOR)
+        holiday = _state_is_true(holiday_raw)
         day_context = logic.compute_day_context(local_now, holiday)
+
+        wake_plan, wake_comparison = self._compute_wake_shadow(
+            local_now=local_now,
+            day_state=day_state,
+            wake_state_raw=wake_state_raw,
+            wake_state_ts=wake_state_ts,
+            wake_state_attrs=wake_state_attrs,
+            wake_next_raw=wake_next_raw,
+            legacy_wake_needed=(
+                wake_needed
+                if wake_needed_raw not in (None, "", "unknown", "unavailable")
+                else None
+            ),
+            legacy_holiday_raw=legacy_holiday_raw,
+            legacy_holiday_ts=legacy_holiday_ts,
+            holiday_raw=holiday_raw,
+            holiday_ts=holiday_ts,
+        )
 
         media_ctx, _, _ = self._read_entity(CONF_MEDIA_CONTEXT)
         private_active = self._read_bool(CONF_PRIVATE_SOURCE)
@@ -465,6 +685,7 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
 
         await self._async_save()
 
+        wake_attrs = wake_plan.as_attributes(wake_comparison)
         attrs = {
             "presence_personal": {
                 "ssid": ssid,
@@ -522,6 +743,12 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
                 },
             },
             "day_state": day_phase_diagnostics,
+            # #26 Shadow-only outputs.  These are additive read-only
+            # projections; the old wake inputs above continue to drive Bio.
+            "wake_state": wake_attrs,
+            "next_wake": wake_attrs,
+            "wake_needed": wake_attrs,
+            "holiday_active": wake_attrs,
             "activity_state": {
                 # Debug-Echo aus media_state (treiben die Entscheidung NICHT mehr).
                 "media_context": media_ctx,
@@ -604,9 +831,25 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
                 source
                 for source in (
                     "runtime:logic.compute_day_state",
-                    self._entity_id(CONF_SOLAR_NOON) or "sun.sun.next_noon",
                 )
                 if source
+            ),
+            "wake_state": (
+                "internal:wake_planning.plan_wake",
+                self._entity_id(CONF_WAKE_STATE),
+                self._entity_id(CONF_WAKE_NEXT),
+            ),
+            "next_wake": (
+                "internal:wake_planning.next_wake",
+                self._entity_id(CONF_WAKE_NEXT),
+            ),
+            "wake_needed": (
+                "internal:wake_planning.wake_needed",
+                self._entity_id(CONF_WAKE_NEEDED),
+            ),
+            "holiday_active": (
+                "internal:wake_planning.holiday_active",
+                self._entity_id(CONF_HOLIDAY_ACTIVE),
             ),
             "holiday": tuple(
                 source
@@ -646,6 +889,10 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
             day_context=day_context,
             activity_state=activity,
             master_context=master,
+            wake_state=wake_plan.state,
+            next_wake=wake_plan.next_wake,
+            wake_needed=wake_plan.wake_needed,
+            holiday_active=wake_plan.holiday_active,
             attrs=attrs,
             effective_reason=hold.reason,
             effective_assumed=hold.assumed,
@@ -664,6 +911,12 @@ def _parse_iso(raw: str | None) -> datetime | None:
     # crashing the compute step. Preserving the tz-aware datetime is what keeps
     # the preheat / transition / effective-presence stabilization timers honest.
     return dt_util.parse_datetime(raw)
+
+
+def _state_is_true(value: Any) -> bool:
+    if value is None:
+        return False
+    return str(value).lower() in ("on", "true", "home", "1", "yes", "active")
 
 
 def _activity_reason(

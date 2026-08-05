@@ -1,17 +1,17 @@
 # Core-State Entity-Mapping-Vertrag
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 **Stand:** 2026-08-05
 **Repository:** Levtos/benni-core-state
 **Issue-Agent:** agent:codex
 **Issue:** [Levtos/benni-core-state#25](https://github.com/Levtos/benni-core-state/issues/25)
-**Verifizierte Basis:** GitHub-Default-Branch main, cd1db2fd0670c2695a653db1bbdb5eb7648bb6d0
+**Verifizierte Basis:** GitHub-Default-Branch main, 852086442a3719b73497dfd28004f7d014f477f3
 **Vertragsschlüssel:** MAPPING_CONTRACT_VERSION = "1.0.0"
 
-Dieses Dokument legt ausschließlich die kanonischen Core-State-Mappings,
-Legacy-Klassifikationen und die owner-lokale Diagnoseform fest. Es registriert
-keine neuen Home-Assistant-Entities, bindet keinen Consumer um und implementiert
-weder Wake Planning noch provisional_sleep oder den waking-Lifecycle.
+Dieses Dokument legt die kanonischen Core-State-Mappings, Legacy-Klassifikationen
+und die owner-lokale Diagnoseform fest. Die #26-Umsetzung veröffentlicht die
+reservierten Wake-Targets additiv als Shadow; sie bindet keinen Consumer um und
+implementiert weder provisional_sleep noch den Bio-waking-Lifecycle.
 
 ## Quellen und Entscheidungsgrenze
 
@@ -20,8 +20,8 @@ weder Wake Planning noch provisional_sleep oder den waking-Lifecycle.
 - [Levtos/control#30](https://github.com/Levtos/control/issues/30);
 - [Levtos/benni-core-state#21](https://github.com/Levtos/benni-core-state/issues/21);
 - [Levtos/benni-core-state#24](https://github.com/Levtos/benni-core-state/issues/24) und der
-  ungemergte [Draft-PR #30](https://github.com/Levtos/benni-core-state/pull/30),
-  Head dbc5cc958ef15ac3e2c0c0c8a07f2134b91afc9;
+  gemergte [PR #30](https://github.com/Levtos/benni-core-state/pull/30),
+  Merge-SHA 26c63c177dd40ca8cfffe85d4c1b3cdc99f4db07;
 - [Levtos/ha_wake_planner#34](https://github.com/Levtos/ha_wake_planner/issues/34),
   der ungemergte [Draft-PR #36](https://github.com/Levtos/ha_wake_planner/pull/36)
   und das [Wake-Planner-Inventar](https://github.com/Levtos/ha_wake_planner/blob/agent/ha-wake-planner-34-inventory/docs/wake_planner_inventory_migration_contract.md);
@@ -31,9 +31,9 @@ weder Wake Planning noch provisional_sleep oder den waking-Lifecycle.
   [Day State](https://github.com/Levtos/einhornzentrale/blob/main/docs/lastenhefte/reviewed/day_state/lastenheft.md)
   und [Day Context](https://github.com/Levtos/einhornzentrale/blob/main/docs/lastenhefte/reviewed/day_context/lastenheft.md).
 
-#24 ist fachlich maßgeblich, aber der korrigierte Runtime-Stand aus PR #30 ist
-noch nicht in die Basis gemergt. Deshalb enthält dieser Vertrag bereits die
-neun Zielphasen, verändert aber nicht den aktuellen Acht-Phasen-/Solar-Noon-Code.
+#24 ist fachlich maßgeblich und der korrigierte Runtime-Stand aus PR #30 ist in
+der verifizierten Basis enthalten. Die neun Phasen werden datumsermittelt
+berechnet; ein Solar-Noon-Pfad gehört nicht mehr zum Runtime-Contract.
 
 ## Kanonische Benennung und unique_id
 
@@ -79,7 +79,7 @@ Die Tabelle zeigt konkrete IDs für die Benni-Route. — bedeutet absichtlich
 | provisional_sleep | Rechnerischer Schutzkorridor, nicht bestätigter Schlaf | sensor.benni_core_state_bio_state als geplanter Bio-Wert; keine eigene Entity | sensor | benni_core_state_<entry_id>_bio_state | Aktuell sleep, waking, awake; künftig zusätzlich provisional_sleep | reason, source, Schlaf-/Wake-Zeitfelder erst nach #27 | Core State, L1; Umsetzung #27 | keine Ist-Implementierung | keine Wake-Planner-Funktion | kein Alias, keine Veröffentlichung in #25 | planned | #34 behauptet weder provisional_sleep noch ein Core-State-Bio-Modell. | Erst nach #26/#27 mit eigenem Shadow-/Consumer-Gate. | Bis dahin keine Zustandsänderung; aktueller Bio-State bleibt Rückfallebene. | [Core State#27](https://github.com/Levtos/benni-core-state/issues/27) |
 | waking | Bio-State-Wert im späteren Lifecycle | sensor.benni_core_state_bio_state als bestehender State; keine eigene Entity | sensor | benni_core_state_<entry_id>_bio_state | sleep, waking, awake | last_awake_start, wake_needed, wake_next | Core State, L1; Lifecycle #28 | aktueller Core-State-Bio-Pfad; Old Planner ist keine waking-Quelle | keine belegte Old-waking-Entity | Kein separater Rebind; Consumers lesen den Bio-State | attribute_only | waking wird nicht als bestehende Wake-Planner-Funktion ausgegeben und nicht doppelt veröffentlicht. | Nach #28 auf dem bestehenden Bio-State-Gate; nicht in #25. | Kein separater waking-Sensor; aktuelle Bio-Entity bleibt aktiv. | [Core State#28](https://github.com/Levtos/benni-core-state/issues/28) |
 | activity_state | Abgeleiteter Gesamt-Activity-State | sensor.benni_core_state_activity_state | sensor | benni_core_state_<entry_id>_activity_state | aktuelle ACTIVITY_STATES des Core State | activity_reason, media_activity_context, media_activity_source, pc_active | Core State, L1; Media State nur Feed-Owner | internal:coordinator.compute_activity; sensor.system_benni_media_state_activity_context als neutraler Media-Feed | sensor.benni_combined_context_activity_state | Mirror nach Consumer-Allowlist ersetzen; system_-Feed bleibt bis Media-State-Contract explizite Ist-Quelle | canonical_current | Keine neue Media-Erkennung, keine HomePod-/Denon-Rohwerte und keine Media-Fusion in Core State. | Consumer-Rebind erst über #29 und jeweilige Consumer-Freigabe. | Media State bleibt Feed-Owner; bei Unklarheit aktuellen Feed weiterverwenden. | [Core State#29](https://github.com/Levtos/benni-core-state/issues/29) |
-| day_state | Neun datumsermittelte Tagesphasen | sensor.benni_core_state_day_state | sensor | benni_core_state_<entry_id>_day_state | early_night, late_night, early_morning, forenoon, midday, afternoon, late_afternoon, evening, late_evening | phase_starts, source | Core State, L1 | Basis aktuell runtime:const.DAY_STATES/runtime:logic.compute_day_state; PR #30 entfernt Solar-Noon-Pfad | sensor.benni_combined_context_day_state; sensor.benni_core_day_state; sensor.lights_dayphase | Nach #24-/Consumer-Gates ersetzen; keine versteckten alten Phasen-Aliase | canonical_target | Die korrigierte #24-Liste ist die einzige Zielwertliste; PR #30 bleibt ungemergt. | Nach technischem #24-Review/Merge und Consumer-Allowlist; #25 ändert den Runtime-Pfad nicht. | Bis dahin aktueller Basis-Code und alte Quelle unverändert behalten. | [Core State#24](https://github.com/Levtos/benni-core-state/issues/24) / [Core State#25](https://github.com/Levtos/benni-core-state/issues/25) |
+| day_state | Neun datumsermittelte Tagesphasen | sensor.benni_core_state_day_state | sensor | benni_core_state_<entry_id>_day_state | early_night, late_night, early_morning, forenoon, midday, afternoon, late_afternoon, evening, late_evening | phase_starts, source | Core State, L1 | runtime:const.DAY_STATES/runtime:logic.compute_day_state; kein Solar-Noon-Input | sensor.benni_combined_context_day_state; sensor.benni_core_day_state; sensor.lights_dayphase | Nach #24-/Consumer-Gates als kanonische Quelle verwenden; keine versteckten alten Phasen-Aliase | canonical_current | Die korrigierte #24-Liste ist die einzige Zielwertliste und ist in main implementiert. | Consumer-Allowlist und jeweilige Live-Gates; #25 ändert den Runtime-Pfad nicht. | Aktuellen neunphasigen Code behalten; Legacy-Consumer bleiben bis Gate. | [Core State#24](https://github.com/Levtos/benni-core-state/issues/24) / [Core State#25](https://github.com/Levtos/benni-core-state/issues/25) |
 | wake_state | Wake-Entscheidung / Plan-State | sensor.benni_core_state_wake_state | sensor | benni_core_state_<entry_id>_wake_state | scheduled, skipped, overridden, holiday, inactive | Wake-Zeit, decided_by, reason, Holiday-Name, Skip/Override, next_wake, Fenster, Regel-/Konfliktfelder | Core State, L1; Berechnung #26 | sensor.wake_planner_benni_wake_state | dieselbe Old-Entity, Old-unique_id, WakeDecision | Temporär weiterverwenden; erst nach Shadow-/Cutover-Gate ersetzen | planned | #34 belegt genau diese fünf Old-Werte; sie sind keine Bio-/waking-Semantik. | Nach #26, control#27/#28, Consumer-Allowlist und Bennis Live-Gate. | Old Planner, Config, Store, Entity, Service und Eventpfad bleiben aktivierbar. | [Core State#26](https://github.com/Levtos/benni-core-state/issues/26) |
 | next_wake | Nächster geplanter Wake-Zeitpunkt | sensor.benni_core_state_next_wake | sensor | benni_core_state_<entry_id>_next_wake | timezone-aware Timestamp oder None | Old-Decision-Attribute, Fenster, reason, Regel-ID | Core State, L1; Berechnung #26 | sensor.wake_planner_benni_next_wake; 30-Tage-Suche | Old Timestamp-Sensor und Preview/WS-Ausgabe | Old-Ausgabe bleibt bis Timestamp-/Timezone-Parität; kein Rebind in #25 | planned | #34 belegt 30-Tage-Horizont und lokale Zeitsemantik, nicht die neue Runtime. | Nach #26-Parität und control-/Consumer-Gates. | Old Next-Wake und 30-Tage-Suche bleiben Rückfallebene. | [Core State#26](https://github.com/Levtos/benni-core-state/issues/26) |
 | wake_needed | Boolean innerhalb des Wake-Fensters | binary_sensor.benni_core_state_wake_needed | binary_sensor | benni_core_state_<entry_id>_wake_needed | on, off | Fenstergrenzen, Wake-Zeit, Wake-State, reason | Core State, L1; Berechnung #26 | binary_sensor.wake_planner_benni_wake_needed | Old Binary Sensor, Device-Class running | Temporär; nicht als Bio-/waking-Signal umdeuten | planned | #34 definiert wake_needed als Zeitfenster-Boolean für scheduled/overridden. | Nach #26-Fensterparität und Media-/Light-Cutover-Gates. | Old Binary Sensor bleibt unverändert aktiv. | [Media Policy#28](https://github.com/Levtos/benni_media_policy/issues/28) |
@@ -91,7 +91,7 @@ Die Tabelle zeigt konkrete IDs für die Benni-Route. — bedeutet absichtlich
 
 Die vollständige deklarative Registry der bestehenden Presence-/Context-Outputs
 sowie die explizite Legacy-Auflösung liegt technisch in
-[custom_components/benni_core_state/mapping.py](https://github.com/Levtos/benni-core-state/blob/agent/core-state-entity-mappings/custom_components/benni_core_state/mapping.py).
+[custom_components/benni_core_state/mapping.py](https://github.com/Levtos/benni-core-state/blob/main/custom_components/benni_core_state/mapping.py).
 Die Registry ist rein deklarativ; mapping_diagnostics() schreibt nichts in die
 Home-Assistant-Entity-Registry.
 
@@ -201,12 +201,10 @@ In #25 werden keine dieser Repositories geändert.
 
 ## Risiken und offene Gates
 
-1. Der Runtime-Stand der Basis enthält noch den alten Day-State-Code; der
-   korrigierte Neun-Phasen-Stand liegt in ungemergtem PR #30. Das Mapping ist
-   deshalb Zielvertrag, kein impliziter Merge von #24.
-2. Wake-/Holiday-/Vacation-Outputs sind bewusst noch nicht veröffentlicht und
-   nicht berechnet. #26 muss Source-, Quality-, Reason-, Timestamp- und Shadow-
-   Parität liefern.
+1. Der korrigierte Neun-Phasen-Stand aus PR #30 ist in main enthalten; die
+   fachlichen Consumer-Gates für Legacy-Phasen bleiben separat offen.
+2. Wake-/Holiday-/Vacation-Outputs werden jetzt als #26-Shadow veröffentlicht;
+   Shadow-Parität und jeder spätere Consumer-Cutover bleiben separate Gates.
 3. Consumer-Repositorys enthalten nachweislich gemischte clean-, system_- und
    Combined-Referenzen. Keine davon wird in #25 geändert.
 4. Testing beziehungsweise Tests Pass bedeutet technischen Abschluss des

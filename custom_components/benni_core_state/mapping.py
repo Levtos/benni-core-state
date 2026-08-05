@@ -1,8 +1,9 @@
 """Versioned Core-State entity and legacy-resolution contract.
 
 This module is deliberately pure Python.  It records the mapping decision for
-the owner-local Core-State contract without registering entities, changing
-consumers, or implementing the later Wake/Sleep work from #26 and #27.
+the owner-local Core-State contract without changing consumers or implementing
+the later Bio lifecycle work from #27/#28.  The #26 Wake Shadow consumes this
+declarative mapping but keeps its comparison diagnostics in wake_planning.py.
 """
 
 from __future__ import annotations
@@ -287,13 +288,13 @@ CANONICAL_MAPPINGS: Final[tuple[EntityMapping, ...]] = (
         allowed_states=CANONICAL_DAY_STATES,
         attributes=("phase_starts", "source"),
         owner="benni-core-state (L1)",
-        current_source=("runtime:const.DAY_STATES (pre-#24 branch)", "runtime:logic.compute_day_state"),
+        current_source=("runtime:const.DAY_STATES", "runtime:logic.compute_day_state"),
         legacy_references=("sensor.benni_combined_context_day_state", "sensor.benni_core_day_state", "sensor.lights_dayphase"),
         legacy_resolution=LEGACY_REPLACE_AFTER_CUTOVER,
-        status=STATUS_CANONICAL_TARGET,
-        reason="Die kanonischen Zielwerte sind exakt die neun korrigierten #24-Phasen; PR #30 bleibt ungemergt und #25 ändert den Runtime-Pfad nicht.",
-        planned_cutover="Nach technischem #24-Review/Merge und Consumer-Allowlist; alte Phase-Labels werden nicht als Zielalias geführt.",
-        rollback="Bis #24 und Consumer-Gates bleiben der aktuelle Runtime-Branch und seine alte Quelle unverändert; kein Alias für frühere Namen.",
+        status=STATUS_CANONICAL_CURRENT,
+        reason="Die kanonischen Werte sind exakt die neun korrigierten #24-Phasen; PR #30 ist in main enthalten und #25 ändert den Runtime-Pfad nicht.",
+        planned_cutover="Consumer-Allowlist und jeweilige Live-Gates bleiben offen; alte Phase-Labels werden nicht als Zielalias geführt.",
+        rollback="Aktuellen neunphasigen Runtime-Contract behalten; Legacy-Consumer bleiben bis zum jeweiligen Gate unverändert.",
         consumer_issue="https://github.com/Levtos/benni-core-state/issues/24 und https://github.com/Levtos/benni-core-state/issues/25",
         entity_id_pattern="sensor.{profile}_core_state_day_state",
         entity_suffix="day_state",

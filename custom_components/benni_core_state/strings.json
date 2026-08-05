@@ -23,6 +23,8 @@
           "proximity_direction": "Proximity — direction",
           "wake_next": "Wake Planner — next wake",
           "wake_needed": "Wake Planner — wake needed",
+          "wake_state": "Wake Planner — wake state reference",
+          "holiday_active": "Wake Planner — holiday-active reference",
           "pc_active": "PC master",
           "ps5_active": "PS5 active",
           "coffee_active": "Coffee machine active",
@@ -43,7 +45,9 @@
           "hysteresis_m": "Hysteresis (m)",
           "preheat_duration": "Max preheat duration (s)",
           "tracker_freshness": "Tracker freshness window (s)",
-          "transition_hold": "Transition hold duration (s)"
+          "transition_hold": "Transition hold duration (s)",
+          "wake_window_minutes": "Wake window (minutes, ±)",
+          "wake_floor": "Absolute wake floor (local time)"
         }
       }
     },
@@ -82,6 +86,8 @@
           "proximity_direction": "Proximity — direction",
           "wake_next": "Wake Planner — next wake",
           "wake_needed": "Wake Planner — wake needed",
+          "wake_state": "Wake Planner — wake state reference",
+          "holiday_active": "Wake Planner — holiday-active reference",
           "pc_active": "PC master",
           "ps5_active": "PS5 active",
           "coffee_active": "Coffee machine active",
@@ -102,7 +108,9 @@
           "hysteresis_m": "Hysteresis (m)",
           "preheat_duration": "Max preheat duration (s)",
           "tracker_freshness": "Tracker freshness window (s)",
-          "transition_hold": "Transition hold duration (s)"
+          "transition_hold": "Transition hold duration (s)",
+          "wake_window_minutes": "Wake window (minutes, ±)",
+          "wake_floor": "Absolute wake floor (local time)"
         }
       }
     }
