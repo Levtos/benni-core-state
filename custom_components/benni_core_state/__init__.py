@@ -18,8 +18,9 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 
-from .const import DATA_WS_REGISTERED, DOMAIN, LEGACY_ENTITY_MAP
+from .const import DATA_WS_REGISTERED, DOMAIN
 from .coordinator import BenniCoreStateCoordinator, all_coordinators
+from .mapping import LEGACY_CONFIG_COMPATIBILITY, resolve_legacy_entity
 from .services import async_register_services, async_unregister_services
 from .view import async_remove_view, async_setup_view
 from .websocket_api import async_setup_websocket_api
@@ -35,9 +36,24 @@ def _migrated_entry_sources(entry: ConfigEntry) -> tuple[bool, dict, dict]:
     options = dict(entry.options)
     for target in (data, options):
         for key, value in list(target.items()):
-            if isinstance(value, str) and value in LEGACY_ENTITY_MAP:
-                target[key] = LEGACY_ENTITY_MAP[value]
+            if not isinstance(value, str):
+                continue
+            resolution = resolve_legacy_entity(value)
+            if (
+                resolution.status == LEGACY_CONFIG_COMPATIBILITY
+                and resolution.target_entity_id
+            ):
+                target[key] = resolution.target_entity_id
                 changed = True
+                _LOGGER.info(
+                    "Resolved temporary Core-State source mapping: key=%s source=%s "
+                    "target=%s status=%s reason=%s",
+                    key,
+                    resolution.source_entity_id,
+                    resolution.target_entity_id,
+                    resolution.status,
+                    resolution.reason,
+                )
     return changed, data, options
 
 
