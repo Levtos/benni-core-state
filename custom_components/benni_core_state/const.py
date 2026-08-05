@@ -49,7 +49,6 @@ CONF_PRIVATE_SOURCE = "private_source"
 CONF_HOMEOFFICE_PING = "homeoffice_ping"
 CONF_HOLIDAY_SENSOR = "holiday_sensor"
 CONF_HOUSEHOLD_SOURCE = "household_source"
-CONF_SOLAR_NOON = "solar_noon"
 # Activity v2 (PR2 / FLEET-256): Media-Aktivität kommt jetzt aus EINEM
 # media_state-Feed statt aus Roh-Playern. media_state ist Owner der
 # Media-Wahrheit (benni_media_state v0.12.0 / FLEET-255) — Core liest KEINE
@@ -134,18 +133,20 @@ BIO_WAKING = "waking"
 BIO_AWAKE = "awake"
 BIO_STATES = [BIO_SLEEP, BIO_WAKING, BIO_AWAKE]
 
-# Day state
-DAY_EARLY_MORNING = "early_morning"
-DAY_LATE_MORNING = "late_morning"
-DAY_FORENOON = "forenoon"
-DAY_AFTERNOON = "afternoon"
-DAY_EARLY_EVENING = "early_evening"
-DAY_LATE_EVENING = "late_evening"
+# Day state — nine calendar-derived phases.
 DAY_EARLY_NIGHT = "early_night"
 DAY_LATE_NIGHT = "late_night"
+DAY_EARLY_MORNING = "early_morning"
+DAY_FORENOON = "forenoon"
+DAY_MIDDAY = "midday"
+DAY_AFTERNOON = "afternoon"
+DAY_LATE_AFTERNOON = "late_afternoon"
+DAY_EVENING = "evening"
+DAY_LATE_EVENING = "late_evening"
 DAY_STATES = [
-    DAY_EARLY_MORNING, DAY_LATE_MORNING, DAY_FORENOON, DAY_AFTERNOON,
-    DAY_EARLY_EVENING, DAY_LATE_EVENING, DAY_EARLY_NIGHT, DAY_LATE_NIGHT,
+    DAY_EARLY_NIGHT, DAY_LATE_NIGHT, DAY_EARLY_MORNING, DAY_FORENOON,
+    DAY_MIDDAY, DAY_AFTERNOON, DAY_LATE_AFTERNOON, DAY_EVENING,
+    DAY_LATE_EVENING,
 ]
 
 # Day context
@@ -243,7 +244,6 @@ PROFILE_PREFILL: dict[str, dict[str, str]] = {
         # FLEET-36 Cut-over: vom Toolbox-Modul benni_media_context auf den
         # extrahierten L1-Feeder benni_media_state (profil-getriebener Slug).
         CONF_MEDIA_CONTEXT: "sensor.benni_media_state_media_context",
-        CONF_SOLAR_NOON: "sensor.system_sun2_solar_noon",
         # Activity v2 (PR2 / FLEET-256): Media-Hälfte aus dem media_state-Feed.
         # WICHTIG: stabiler Live-Slug mit system_-Präfix (neu registrierte Entity
         # erbt system_; nie auf den clean slug binden — Wurzel des v0.10.0-Bugs).

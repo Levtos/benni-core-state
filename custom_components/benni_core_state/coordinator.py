@@ -56,7 +56,6 @@ from .const import (
     CONF_PROXIMITY_DIRECTION,
     CONF_PROXIMITY_DISTANCE,
     CONF_PS5_ACTIVE,
-    CONF_SOLAR_NOON,
     CONF_SSID_SOURCE,
     CONF_TRACKER_FRESHNESS,
     CONF_TRANSITION_HOLD,
@@ -182,7 +181,7 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
             CONF_WAKE_NEXT, CONF_WAKE_NEEDED,
             CONF_PC_ACTIVE, CONF_PS5_ACTIVE, CONF_COFFEE_ACTIVE, CONF_DOOR_WAKE,
             CONF_MEDIA_CONTEXT, CONF_PRIVATE_SOURCE, CONF_HOMEOFFICE_PING,
-            CONF_HOLIDAY_SENSOR, CONF_HOUSEHOLD_SOURCE, CONF_SOLAR_NOON,
+            CONF_HOLIDAY_SENSOR, CONF_HOUSEHOLD_SOURCE,
             # Activity v2 (PR2 / FLEET-256): der media_state-Feed treibt die
             # Media-Aktivität; entertainment/gaming_platform/media_device bleiben
             # nur als Debug-Echo (kein Roh-HomePods/Denon/Stash mehr).
@@ -385,19 +384,10 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
                 state.last_changed if wake_indicators[key] and state is not None else None
             )
         local_now = dt_util.as_local(now)
-        solar_noon_raw, _, _ = self._read_entity(CONF_SOLAR_NOON)
-        solar_noon = _parse_local_datetime(solar_noon_raw, local_now)
-        solar_noon_source = self._entity_id(CONF_SOLAR_NOON) if solar_noon else None
-        if solar_noon is None:
-            sun = self.hass.states.get("sun.sun")
-            if sun is not None:
-                solar_noon = _parse_local_datetime(
-                    sun.attributes.get("next_noon"), local_now
-                )
-                if solar_noon is not None:
-                    solar_noon_source = "sun.sun.next_noon"
-        day_state = logic.compute_day_state(local_now, solar_noon)
-        day_phase_starts = logic.compute_day_phase_starts(local_now, solar_noon)
+        day_state = logic.compute_day_state(local_now)
+        day_phase_diagnostics = logic.compute_day_phase_diagnostics(
+            local_now, day_state
+        )
         new_bio, sleep_start, awake_start = logic.compute_bio_state(
             prev_state=self._persistent.bio_state,
             wake_needed=wake_needed,
@@ -530,14 +520,7 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
                     for k, active_since in wake_indicator_active_since.items()
                 },
             },
-            "day_state": {
-                "solar_noon": solar_noon.isoformat() if solar_noon else None,
-                "phase_starts": {
-                    phase: day_phase_starts[phase].strftime("%H:%M:%S")
-                    for phase in logic.DAY_PHASE_ORDER
-                },
-                "source": solar_noon_source or "fallback",
-            },
+            "day_state": day_phase_diagnostics,
             "activity_state": {
                 # Debug-Echo aus media_state (treiben die Entscheidung NICHT mehr).
                 "media_context": media_ctx,
@@ -683,31 +666,6 @@ def _float_or_none(raw: Any) -> float | None:
 def _latest_datetime(*values: datetime | None) -> datetime | None:
     present = [value for value in values if value is not None]
     return max(present) if present else None
-
-
-def _parse_local_datetime(raw: Any, local_now: datetime) -> datetime | None:
-    if raw in (None, "unknown", "unavailable", ""):
-        return None
-    if isinstance(raw, datetime):
-        parsed = raw
-    else:
-        parsed = dt_util.parse_datetime(str(raw))
-        if parsed is None:
-            for fmt in ("%H:%M:%S", "%H:%M"):
-                try:
-                    parsed_time = datetime.strptime(str(raw), fmt).time()
-                except ValueError:
-                    continue
-                return local_now.replace(
-                    hour=parsed_time.hour,
-                    minute=parsed_time.minute,
-                    second=parsed_time.second,
-                    microsecond=0,
-                )
-            return None
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=local_now.tzinfo)
-    return dt_util.as_local(parsed)
 
 
 # ----------------------------------------------------------------- lookups

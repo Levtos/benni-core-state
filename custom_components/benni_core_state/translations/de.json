@@ -31,8 +31,7 @@
           "private_source": "Privat-Modus Quelle",
           "homeoffice_ping": "Homeoffice-Ping",
           "holiday_sensor": "Feiertag / Urlaub",
-          "household_source": "Haushalt belegt (Gäste etc.)",
-          "solar_noon": "Solar-Noon-Quelle"
+          "household_source": "Haushalt belegt (Gäste etc.)"
         }
       },
       "thresholds": {
@@ -91,8 +90,7 @@
           "private_source": "Privat-Modus Quelle",
           "homeoffice_ping": "Homeoffice-Ping",
           "holiday_sensor": "Feiertag / Urlaub",
-          "household_source": "Haushalt belegt",
-          "solar_noon": "Solar-Noon-Quelle"
+          "household_source": "Haushalt belegt"
         }
       },
       "thresholds": {
