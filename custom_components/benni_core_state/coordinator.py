@@ -83,6 +83,7 @@ from .const import (
     storage_key,
 )
 from .models import ComputedState, PersistentState
+from .mapping import MAPPING_CONTRACT_VERSION, mapping_diagnostics
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -597,6 +598,51 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
             assumed=hold.assumed,
             activity_hold_active=hold.hold_active,
             day_state=day_state,
+        )
+        source_overrides = {
+            "bio_state": tuple(
+                source
+                for source in (
+                    "internal:coordinator.compute_bio_state",
+                    self._entity_id(CONF_WAKE_NEEDED),
+                    self._entity_id(CONF_WAKE_NEXT),
+                )
+                if source
+            ),
+            "activity_state": tuple(
+                source
+                for source in (
+                    "internal:coordinator.compute_activity",
+                    self._entity_id(CONF_MEDIA_ACTIVITY_CONTEXT),
+                )
+                if source
+            ),
+            "day_state": tuple(
+                source
+                for source in (
+                    "runtime:logic.compute_day_state",
+                    self._entity_id(CONF_SOLAR_NOON) or "sun.sun.next_noon",
+                )
+                if source
+            ),
+            "holiday": tuple(
+                source
+                for source in (
+                    "internal:coordinator.compute_day_context",
+                    self._entity_id(CONF_HOLIDAY_SENSOR),
+                )
+                if source
+            ),
+            "live_status": ("internal:logic.compute_live_status",),
+        }
+        # Owner-local, read-only mapping diagnosis.  It exposes the source,
+        # target, status and reason contract without registering a new entity or
+        # changing any consumer binding.
+        live.attrs["mapping_contract_version"] = MAPPING_CONTRACT_VERSION
+        live.attrs["mapping_diagnostics"] = mapping_diagnostics(
+            profile=self.profile,
+            entry_id=self.entry.entry_id,
+            source_overrides=source_overrides,
         )
         attrs["live_status"] = live.attrs
 

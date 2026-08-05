@@ -67,13 +67,13 @@ from .const import (
     DEFAULT_PROFILE,
     DEFAULT_TRANSITION_HOLD,
     DOMAIN,
-    LEGACY_ENTITY_MAP,
     NAME,
     PROFILE_LABELS,
     PROFILE_PREFILL,
     PROFILE_SSIDS,
     PROFILES,
 )
+from .mapping import LEGACY_CONFIG_COMPATIBILITY, resolve_legacy_entity
 
 
 def _esel(domains: list[str] | None = None) -> selector.EntitySelector:
@@ -192,7 +192,12 @@ _ENTITY_SLOT_KEYS: tuple[str, ...] = tuple(key for key, _ in _ENTITY_SLOTS)
 
 def _normalize_entity_id(value: Any) -> Any:
     if isinstance(value, str):
-        return LEGACY_ENTITY_MAP.get(value, value)
+        resolution = resolve_legacy_entity(value)
+        if (
+            resolution.status == LEGACY_CONFIG_COMPATIBILITY
+            and resolution.target_entity_id
+        ):
+            return resolution.target_entity_id
     return value
 
 
