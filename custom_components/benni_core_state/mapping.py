@@ -25,7 +25,7 @@ MAPPING_CONTRACT_VERSION: Final[str] = "1.0.0"
 DEFAULT_CANONICAL_PROFILE: Final[str] = "benni"
 
 # The nine values are the corrected #24 target contract.  They intentionally do
-# not import the pre-#24 runtime list from const.py: PR #30 is still unmerged and
+# not import the pre-#24 runtime list from const.py: PR #30 is merged into main and
 # #25 must not reimplement or overwrite that change.
 CANONICAL_DAY_STATES: Final[tuple[str, ...]] = (
     "early_night",
