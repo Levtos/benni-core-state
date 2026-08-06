@@ -56,6 +56,7 @@ from .const import (
     DEFAULT_PRESENCE_STALE_SECONDS,
     DEFAULT_PROXIMITY_TREND_EPSILON_M,
     DEFAULT_STABLE_AWAY_SECONDS,
+    DEFAULT_WAKING_TIMEOUT_MINUTES,
     EFF_ARRIVING,
     EFF_AWAY,
     EFF_HOME,
@@ -795,6 +796,8 @@ def compute_bio_state(
     indicator_active_since: dict[str, datetime | None] | None = None,
     provisional_active: bool = False,
     wake_due: bool | None = None,
+    waking_started: datetime | None = None,
+    waking_timeout_minutes: int = DEFAULT_WAKING_TIMEOUT_MINUTES,
 ) -> tuple[str, datetime | None, datetime | None]:
     """Return the Phase-1 Bio state without inferring sleep.
 
@@ -840,12 +843,32 @@ def compute_bio_state(
     if prev_state == BIO_WAKING:
         if activity_wake:
             return BIO_AWAKE, sleep_start, now
+        if (
+            waking_started is not None
+            and waking_timeout_minutes >= 0
+            and _elapsed_seconds(waking_started, now)
+            >= waking_timeout_minutes * 60
+        ):
+            return BIO_AWAKE, sleep_start, now
         return BIO_WAKING, sleep_start, awake_start
 
     if provisional_active:
         return BIO_PROVISIONAL_SLEEP, sleep_start, awake_start
 
     return BIO_AWAKE, sleep_start, awake_start or now
+
+
+def _elapsed_seconds(start: datetime, end: datetime) -> float:
+    """Return monotonic wall-independent elapsed time for aware timestamps."""
+
+    if (
+        start.tzinfo is not None
+        and start.utcoffset() is not None
+        and end.tzinfo is not None
+        and end.utcoffset() is not None
+    ):
+        return max(0.0, end.timestamp() - start.timestamp())
+    return max(0.0, (end - start).total_seconds())
 
 
 # --------------------------------------------------------- day_state / context
