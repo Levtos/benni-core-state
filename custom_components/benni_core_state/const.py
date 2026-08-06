@@ -98,6 +98,7 @@ DEFAULT_TRACKER_FRESHNESS = 1800  # seconds (30 min)
 DEFAULT_TRANSITION_HOLD = 120     # seconds
 DEFAULT_WAKE_WINDOW_MINUTES = 5   # existing Wake-Planner window
 DEFAULT_WAKE_FLOOR = "06:00"      # absolute local civil-time floor
+DEFAULT_WAKING_TIMEOUT_MINUTES = 30
 
 # --- State enums -------------------------------------------------------------
 
