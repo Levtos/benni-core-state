@@ -110,6 +110,7 @@ def test_startup_apply_ready_mapping_is_canonical_and_diagnostic() -> None:
     assert "system_" not in mapping.canonical_entity_id
 
     for old_id in (
+        "binary_sensor.system_benni_core_state_apply_ready",
         "binary_sensor.system_apply_ready",
         "binary_sensor.system_benni_context_ready",
         "input_boolean.system_startup_stable",
