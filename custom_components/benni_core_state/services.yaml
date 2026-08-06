@@ -1,6 +1,6 @@
 set_bio_state:
   name: Set bio state
-  description: Override the bio state (sleep / waking / awake).
+  description: Override the bio state.
   fields:
     state:
       name: State
@@ -10,6 +10,7 @@ set_bio_state:
         select:
           options:
             - sleep
+            - provisional_sleep
             - waking
             - awake
 
@@ -20,3 +21,34 @@ mark_sleep:
 mark_awake:
   name: Mark as awake
   description: Shortcut for set_bio_state with state=awake.
+
+configure_sleep_window:
+  name: Configure sleep window
+  description: Persist the minimum sleep duration (M) and provisional lead (A).
+  fields:
+    minimum_sleep_minutes:
+      name: Minimum sleep
+      description: Confirmed manual sleep required before the flexible wake may start.
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 1440
+          unit_of_measurement: min
+          mode: box
+    provisional_lead_minutes:
+      name: Provisional lead
+      description: Protection lead before the earliest wake; it is not confirmed sleep.
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 1440
+          unit_of_measurement: min
+          mode: box
+    entry_id:
+      name: Config entry
+      description: Optional Core State config-entry ID; omitted applies to all loaded entries.
+      required: false
+      selector:
+        text:
