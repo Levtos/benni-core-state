@@ -5,7 +5,10 @@ und State-Länge. Keine Policy-Semantik.
 """
 from __future__ import annotations
 
+import json
+
 from custom_components.benni_core_state import logic
+from custom_components.benni_core_state import mapping as mapping_contract
 from custom_components.benni_core_state.const import (
     ACT_ENTERTAINMENT,
     ACT_GAMING,
@@ -304,6 +307,28 @@ def test_source_entities_without_feed_still_has_core():
 
 def test_actions_supported_empty():
     assert _ls(activity=ACT_MUSIC, title="X").attrs["actions_supported"] == []
+
+
+def test_recorder_payload_stays_below_attribute_limit_with_compact_mapping():
+    result = _ls(
+        activity=ACT_MUSIC,
+        title="T" * 400,
+        artist="A" * 400,
+        media_activity_context="music",
+        media_activity_reason="music:homepods",
+        media_activity_source="sensor.system_benni_media_state_activity_context",
+    )
+    result.attrs["mapping_contract_version"] = mapping_contract.MAPPING_CONTRACT_VERSION
+    result.attrs["mapping_diagnostics"] = mapping_contract.mapping_diagnostics(
+        profile="benni",
+        entry_id="entry123",
+        compact=True,
+    )
+
+    payload_size = len(
+        json.dumps(result.attrs, ensure_ascii=False, separators=(",", ":")).encode()
+    )
+    assert payload_size < 16_384
 
 
 def test_contract_attrs_present_even_for_private():

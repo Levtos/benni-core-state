@@ -861,14 +861,17 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
             ),
             "live_status": ("internal:logic.compute_live_status",),
         }
-        # Owner-local, read-only mapping diagnosis.  It exposes the source,
-        # target, status and reason contract without registering a new entity or
-        # changing any consumer binding.
+        # Owner-local, read-only mapping diagnosis.  Keep the live-status
+        # projection compact because Home Assistant Recorder persists every
+        # state attribute and the complete migration prose exceeds its limit.
+        # The pure mapping API still exposes the complete rows for deeper
+        # diagnostics and contract tests.
         live.attrs["mapping_contract_version"] = MAPPING_CONTRACT_VERSION
         live.attrs["mapping_diagnostics"] = mapping_diagnostics(
             profile=self.profile,
             entry_id=self.entry.entry_id,
             source_overrides=source_overrides,
+            compact=True,
         )
         attrs["live_status"] = live.attrs
 

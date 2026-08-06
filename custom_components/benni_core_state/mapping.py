@@ -23,6 +23,15 @@ from .const import (
 
 MAPPING_CONTRACT_VERSION: Final[str] = "1.1.1"
 DEFAULT_CANONICAL_PROFILE: Final[str] = "benni"
+_COMPACT_DIAGNOSTIC_KEYS: Final[tuple[str, ...]] = (
+    "mapping_key",
+    "source",
+    "target",
+    "owner",
+    "status",
+    "reason",
+    "contract_version",
+)
 
 # The nine values are the corrected #24 target contract.  They intentionally do
 # not import the pre-#24 runtime list from const.py: PR #30 is merged into main and
@@ -829,8 +838,15 @@ def mapping_diagnostics(
     profile: str = DEFAULT_CANONICAL_PROFILE,
     entry_id: str | None = None,
     source_overrides: Mapping[str, str | Sequence[str] | None] | None = None,
+    compact: bool = False,
 ) -> list[dict[str, object]]:
-    """Return owner-local ``source``/``target``/``status``/``reason`` rows."""
+    """Return owner-local mapping diagnostics.
+
+    ``compact`` keeps the source/target/owner/status/reason contract while
+    omitting verbose migration prose.  The compact projection is used on the
+    frequently recorded live-status entity; the complete rows remain the pure
+    mapping API for tests and deeper diagnostics.
+    """
 
     overrides = source_overrides or {}
     rows: list[dict[str, object]] = []
@@ -842,20 +858,22 @@ def mapping_diagnostics(
                 source = override
         if isinstance(source, tuple) and len(source) == 1:
             source = source[0]
-        rows.append(
-            {
-                "mapping_key": mapping.mapping_key,
-                "contract_fact": mapping.contract_fact,
-                "source": source,
-                "target": render_entity_id(mapping.mapping_key, profile),
-                "unique_id": render_unique_id(mapping.mapping_key, entry_id) if entry_id else mapping.unique_id_template,
-                "owner": mapping.owner,
-                "status": mapping.status,
-                "reason": mapping.reason,
-                "contract_version": MAPPING_CONTRACT_VERSION,
-                "legacy_resolution": mapping.legacy_resolution,
-                "planned_cutover": mapping.planned_cutover,
-                "rollback": mapping.rollback,
-            }
-        )
+        row = {
+            "mapping_key": mapping.mapping_key,
+            "contract_fact": mapping.contract_fact,
+            "source": source,
+            "target": render_entity_id(mapping.mapping_key, profile),
+            "unique_id": render_unique_id(mapping.mapping_key, entry_id) if entry_id else mapping.unique_id_template,
+            "owner": mapping.owner,
+            "status": mapping.status,
+            "reason": mapping.reason,
+            "contract_version": MAPPING_CONTRACT_VERSION,
+            "legacy_resolution": mapping.legacy_resolution,
+            "planned_cutover": mapping.planned_cutover,
+            "rollback": mapping.rollback,
+        }
+        if compact:
+            rows.append({key: row[key] for key in _COMPACT_DIAGNOSTIC_KEYS})
+        else:
+            rows.append(row)
     return rows

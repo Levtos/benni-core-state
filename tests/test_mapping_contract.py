@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from custom_components.benni_core_state import mapping as m
 
 
@@ -173,3 +175,26 @@ def test_owner_local_diagnostics_always_expose_source_target_status_reason() -> 
         assert row["contract_version"] == m.MAPPING_CONTRACT_VERSION
         if row["target"] is not None:
             assert "system_" not in str(row["target"])
+
+
+def test_compact_diagnostics_preserve_contract_without_recorder_bloat() -> None:
+    compact = m.mapping_diagnostics(
+        profile="benni",
+        entry_id="entry123",
+        source_overrides={
+            "activity_state": "sensor.system_benni_media_state_activity_context",
+        },
+        compact=True,
+    )
+
+    assert len(compact) == len(m.CANONICAL_MAPPINGS)
+    assert set(compact[0]) == {
+        "mapping_key",
+        "source",
+        "target",
+        "owner",
+        "status",
+        "reason",
+        "contract_version",
+    }
+    assert len(json.dumps(compact, ensure_ascii=False, separators=(",", ":")).encode()) < 16_384
