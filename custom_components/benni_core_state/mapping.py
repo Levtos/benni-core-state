@@ -1,8 +1,9 @@
 """Versioned Core-State entity and legacy-resolution contract.
 
 This module is deliberately pure Python.  It records the mapping decision for
-the owner-local Core-State contract without changing consumers or implementing
-the later Bio lifecycle work from #27/#28.  The #26 Wake Shadow consumes this
+the owner-local Core-State contract without changing consumers. The Phase-1
+provisional-sleep contract from #27 is implemented; the full waking lifecycle
+remains gated by #28. The #26 Wake Shadow consumes this
 declarative mapping but keeps its comparison diagnostics in wake_planning.py.
 """
 
@@ -241,8 +242,17 @@ CANONICAL_MAPPINGS: Final[tuple[EntityMapping, ...]] = (
         contract_fact="Bio-State",
         domain="sensor",
         allowed_states=tuple(BIO_STATES),
-        attributes=("last_sleep_start", "last_provisional_sleep_start", "last_awake_start", "sleep_window", "indicator_*"),
-        current_source=("internal:coordinator.compute_bio_state", "internal:core_state.sleep_window"),
+        attributes=(
+            "last_sleep_start",
+            "last_provisional_sleep_start",
+            "last_awake_start",
+            "sleep_window",
+            "indicator_*",
+        ),
+        current_source=(
+            "internal:coordinator.compute_bio_state",
+            "internal:core_state.sleep_window",
+        ),
         legacy_references=("sensor.benni_context_bio_state", "sensor.benni_combined_context_bio_state"),
         reason="Bio-State ist die einzige Core-State-Wahrheit für sleep/provisional_sleep/waking/awake; E/L/M/A kommt aus dem internen Sleep-Window-Vertrag.",
         consumer_issue="https://github.com/Levtos/benni-core-state/issues/25",
