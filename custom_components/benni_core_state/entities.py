@@ -18,7 +18,7 @@ from homeassistant.components.binary_sensor import (
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
@@ -40,6 +40,10 @@ from .const import (
 from . import logic
 from .coordinator import BenniCoreStateCoordinator, coordinator_from_hass
 from .models import ComputedState
+from .startup_readiness_runtime import (
+    StartupReadinessRuntime,
+    startup_readiness_from_hass,
+)
 from .wake_planning import WAKE_STATES
 
 
@@ -110,13 +114,61 @@ async def async_get_entities(
     if platform == Platform.SENSOR:
         return [BenniCoreStateSensor(coord, entry, desc) for desc in SENSORS]
     if platform == Platform.BINARY_SENSOR:
-        return [
+        runtime = startup_readiness_from_hass(hass)
+        entities = [
             PreheatActiveBinarySensor(coord, entry),
             PresenceAwayBinarySensor(coord, entry),
             WakeNeededShadowBinarySensor(coord, entry),
             HolidayActiveShadowBinarySensor(coord, entry),
         ]
+        if runtime is not None:
+            entities.insert(0, StartupApplyReadyBinarySensor(runtime, entry))
+        return entities
     return []
+
+
+class StartupApplyReadyBinarySensor(BinarySensorEntity):
+    """Canonical process-wide startup/apply-readiness contract."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Apply Ready"
+
+    def __init__(self, runtime: StartupReadinessRuntime, entry: ConfigEntry) -> None:
+        super().__init__()
+        self._runtime = runtime
+        self._remove_runtime_listener = None
+        self._attr_unique_id = unique_id(entry.entry_id, "apply_ready")
+        self._attr_device_info = _device_info(entry)
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self._remove_runtime_listener = self._runtime.add_listener(
+            self._async_runtime_changed
+        )
+
+    async def async_will_remove_from_hass(self) -> None:
+        if self._remove_runtime_listener is not None:
+            self._remove_runtime_listener()
+            self._remove_runtime_listener = None
+        await super().async_will_remove_from_hass()
+
+    @property
+    def is_on(self) -> bool:
+        return self._runtime.snapshot().is_on
+
+    @property
+    def available(self) -> bool:
+        # ``off`` is an intentional, safe initial state before HA has emitted
+        # EVENT_HOMEASSISTANT_STARTED; it is not an unavailable source value.
+        return True
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return self._runtime.attributes()
+
+    @callback
+    def _async_runtime_changed(self) -> None:
+        self.async_write_ha_state()
 
 
 class BenniCoreStateSensor(CoordinatorEntity[BenniCoreStateCoordinator], SensorEntity):

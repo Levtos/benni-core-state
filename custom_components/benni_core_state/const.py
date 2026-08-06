@@ -17,6 +17,13 @@ from typing import Final
 DOMAIN: Final = "benni_core_state"
 NAME: Final = "Benni Core State"
 
+# Process-wide Startup-/Apply-Readiness-Contract.  This is deliberately a
+# separate lifecycle contract: ``apply_enabled`` and policy decisions remain
+# owned by their respective consumers.
+STARTUP_READINESS_CONTRACT_VERSION: Final = "1.0.0"
+DEFAULT_STARTUP_DELAY_SECONDS: Final = 90
+DATA_STARTUP_READINESS: Final = "_startup_readiness"
+
 # Datenwurzel: hass.data[DOMAIN] = { entry_id: BenniCoreStateCoordinator }
 
 # --- Config entry keys -------------------------------------------------------

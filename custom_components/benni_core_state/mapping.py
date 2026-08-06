@@ -21,7 +21,7 @@ from .const import (
 )
 
 
-MAPPING_CONTRACT_VERSION: Final[str] = "1.0.0"
+MAPPING_CONTRACT_VERSION: Final[str] = "1.1.0"
 DEFAULT_CANONICAL_PROFILE: Final[str] = "benni"
 
 # The nine values are the corrected #24 target contract.  They intentionally do
@@ -113,6 +113,8 @@ def _current(
     reason: str,
     consumer_issue: str,
     target_attributes: Sequence[str] = (),
+    planned_cutover: str = "No consumer cutover in #25; keep the published contract stable.",
+    rollback: str = "Keep the current Core-State entity and its source bindings; do not remove old references.",
 ) -> EntityMapping:
     return EntityMapping(
         mapping_key=mapping_key,
@@ -128,8 +130,8 @@ def _current(
         legacy_resolution=LEGACY_REPLACE_AFTER_CUTOVER if legacy_references else LEGACY_CANONICAL,
         status=STATUS_CANONICAL_CURRENT,
         reason=reason,
-        planned_cutover="No consumer cutover in #25; keep the published contract stable.",
-        rollback="Keep the current Core-State entity and its source bindings; do not remove old references.",
+        planned_cutover=planned_cutover,
+        rollback=rollback,
         consumer_issue=consumer_issue,
         entity_id_pattern=f"{domain}.{{profile}}_core_state_{mapping_key}",
         entity_suffix=mapping_key,
@@ -487,6 +489,63 @@ CANONICAL_MAPPINGS: Final[tuple[EntityMapping, ...]] = (
         consumer_issue="https://github.com/Levtos/benni-core-state/issues/25",
         target_attributes=("source", "status", "reason", "mapping_contract_version", "mapping_diagnostics"),
     ),
+    _current(
+        mapping_key="apply_ready",
+        contract_fact="prozessweiter HA-Startup-/Apply-Readiness-Zustand",
+        domain="binary_sensor",
+        allowed_states=("on", "off"),
+        attributes=(
+            "ready_at",
+            "startup_started_at",
+            "startup_delay",
+            "startup_phase",
+            "startup_elapsed_s",
+            "reason",
+            "transition_count",
+            "mapping_contract_version",
+            "startup_readiness_contract_version",
+            "mapping_key",
+            "owner",
+            "source",
+            "status",
+            "mapping_reason",
+            "legacy_resolution",
+        ),
+        current_source=(
+            "runtime:startup_readiness.StartupReadinessRuntime",
+            "ha_lifecycle:EVENT_HOMEASSISTANT_STARTED",
+        ),
+        legacy_references=(
+            "binary_sensor.system_apply_ready",
+            "binary_sensor.system_benni_context_ready",
+            "input_boolean.system_startup_stable",
+        ),
+        reason=(
+            "Core State owns only process lifetime readiness; source health, "
+            "apply_enabled, Lux, Manual-Off and policy decisions stay separate."
+        ),
+        planned_cutover=(
+            "Rebind Light Policy and proven private-config consumers first; "
+            "remove YAML truth sources only after the consumer allowlist and "
+            "rollback path are documented in Issue #33."
+        ),
+        rollback=(
+            "Keep the old YAML entities and consumer references until the "
+            "technical cutover is verified; do not create an alias or write "
+            "the legacy helper from Core State."
+        ),
+        consumer_issue="https://github.com/Levtos/benni-core-state/issues/33",
+        target_attributes=(
+            "ready_at",
+            "startup_delay",
+            "startup_phase",
+            "reason",
+            "mapping_contract_version",
+            "owner",
+            "source",
+            "status",
+        ),
+    ),
 )
 
 
@@ -504,6 +563,27 @@ LEGACY_RESOLUTIONS: Final[tuple[LegacyResolution, ...]] = (
         LEGACY_CONFIG_COMPATIBILITY,
         "pc_source_rebind",
         "Temporary Core-State config compatibility; the old input remains documented and is not a consumer alias.",
+    ),
+    LegacyResolution(
+        "binary_sensor.system_apply_ready",
+        _entity("binary_sensor", "apply_ready"),
+        LEGACY_REPLACE_AFTER_CUTOVER,
+        "apply_ready",
+        "Old YAML template; replace only after the proven consumer cutover in Issue #33.",
+    ),
+    LegacyResolution(
+        "binary_sensor.system_benni_context_ready",
+        _entity("binary_sensor", "apply_ready"),
+        LEGACY_REPLACE_AFTER_CUTOVER,
+        "apply_ready",
+        "Old Light-Policy system_ready_entity value; this is a scoped consumer migration, not a semantic alias for the context contract.",
+    ),
+    LegacyResolution(
+        "input_boolean.system_startup_stable",
+        _entity("binary_sensor", "apply_ready"),
+        LEGACY_REPLACE_AFTER_CUTOVER,
+        "apply_ready",
+        "Old YAML startup helper; consumers must cut over before its writer is removed.",
     ),
     LegacyResolution(
         "sensor.system_benni_core_state_presence_effective",
@@ -759,9 +839,13 @@ def mapping_diagnostics(
                 "source": source,
                 "target": render_entity_id(mapping.mapping_key, profile),
                 "unique_id": render_unique_id(mapping.mapping_key, entry_id) if entry_id else mapping.unique_id_template,
+                "owner": mapping.owner,
                 "status": mapping.status,
                 "reason": mapping.reason,
+                "contract_version": MAPPING_CONTRACT_VERSION,
                 "legacy_resolution": mapping.legacy_resolution,
+                "planned_cutover": mapping.planned_cutover,
+                "rollback": mapping.rollback,
             }
         )
     return rows
