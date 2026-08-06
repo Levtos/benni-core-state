@@ -2,7 +2,7 @@
 
 Registriert direkt unter der eigenen Domain (kein Umbrella-Präfix mehr):
 
-* ``benni_core_state.set_bio_state`` (state: sleep|waking|awake)
+* ``benni_core_state.set_bio_state`` (manuell: sleep|waking|awake)
 * ``benni_core_state.mark_sleep``  — Shortcut für state=sleep
 * ``benni_core_state.mark_awake``  — Shortcut für state=awake
 * ``benni_core_state.configure_sleep_window`` — persistiert M und A
@@ -20,7 +20,6 @@ from homeassistant.util import dt as dt_util
 from .const import (
     BIO_AWAKE,
     BIO_SLEEP,
-    BIO_STATES,
     DOMAIN,
     SERVICE_CONFIGURE_SLEEP_WINDOW,
     SERVICE_MARK_AWAKE,
@@ -29,7 +28,9 @@ from .const import (
 )
 from .coordinator import all_coordinators
 
-SET_BIO_SCHEMA = vol.Schema({vol.Required("state"): vol.In(BIO_STATES)})
+SET_BIO_SCHEMA = vol.Schema(
+    {vol.Required("state"): vol.In((BIO_SLEEP, "waking", BIO_AWAKE))}
+)
 CONFIGURE_SLEEP_WINDOW_SCHEMA = vol.Schema(
     {
         vol.Required("minimum_sleep_minutes"): vol.All(
