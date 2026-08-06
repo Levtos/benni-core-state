@@ -10,7 +10,6 @@ set_bio_state:
         select:
           options:
             - sleep
-            - provisional_sleep
             - waking
             - awake
 
