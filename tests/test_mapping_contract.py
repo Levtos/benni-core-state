@@ -71,7 +71,9 @@ def test_required_fact_mappings_have_domains_states_attributes_and_owners() -> N
         assert entry.consumer_issue.startswith("https://github.com/")
 
     assert m.mapping_for("provisional_sleep").canonical_entity_id == m.render_entity_id("bio_state")
-    assert m.mapping_for("provisional_sleep").future_states == ("provisional_sleep",)
+    assert "provisional_sleep" in m.mapping_for("provisional_sleep").allowed_states
+    assert m.mapping_for("provisional_sleep").future_states == ()
+    assert m.mapping_for("provisional_sleep").status == m.STATUS_CANONICAL_CURRENT
     assert m.mapping_for("waking").canonical_entity_id == m.render_entity_id("bio_state")
     assert m.mapping_for("automatic_day_profile").target_attributes == (
         "automatic_day_profile",
