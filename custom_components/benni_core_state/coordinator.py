@@ -34,6 +34,7 @@ from .const import (
     ACTIVITY_HOLD_STRENGTH,
     BIO_PROVISIONAL_SLEEP,
     BIO_SLEEP,
+    BIO_WAKING,
     CONF_COFFEE_ACTIVE,
     CONF_DOOR_WAKE,
     CONF_ENTERTAINMENT_ACTIVE,
@@ -83,6 +84,7 @@ from .const import (
     DEFAULT_TRANSITION_HOLD,
     DEFAULT_WAKE_FLOOR,
     DEFAULT_WAKE_WINDOW_MINUTES,
+    DEFAULT_WAKING_TIMEOUT_MINUTES,
     DOMAIN,
     PERS_PARENTS,
     PROFILE_PREFILL,
@@ -657,6 +659,16 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
         )
 
         previous_bio = self._persistent.bio_state
+        waking_started = (
+            _parse_iso(self._persistent.last_waking_start)
+            if previous_bio == BIO_WAKING
+            else None
+        )
+        waking_start_recovered = previous_bio == BIO_WAKING and waking_started is None
+        if waking_start_recovered:
+            waking_started = now
+            self._persistent.last_waking_start = now.isoformat()
+
         new_bio, sleep_start, awake_start = logic.compute_bio_state(
             prev_state=previous_bio,
             wake_needed=wake_needed,
@@ -669,7 +681,12 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
             indicator_active_since=wake_indicator_active_since,
             provisional_active=sleep_plan.provisional_active,
             wake_due=sleep_plan.wake_due if sleep_plan.available else None,
+            waking_started=waking_started,
+            waking_timeout_minutes=DEFAULT_WAKING_TIMEOUT_MINUTES,
         )
+        if new_bio == BIO_WAKING and previous_bio != BIO_WAKING:
+            waking_started = now
+            self._persistent.last_waking_start = now.isoformat()
         if (
             new_bio == BIO_PROVISIONAL_SLEEP
             and previous_bio != BIO_PROVISIONAL_SLEEP
@@ -681,6 +698,15 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
         )
         self._persistent.last_awake_start = (
             awake_start.isoformat() if awake_start else None
+        )
+        bio_reason = _bio_transition_reason(
+            previous=previous_bio,
+            current=new_bio,
+            presence_personal=presence_personal,
+            sleep_reason=sleep_plan.reason,
+            waking_started=waking_started,
+            now=now,
+            recovered_start=waking_start_recovered,
         )
 
         media_ctx, _, _ = self._read_entity(CONF_MEDIA_CONTEXT)
@@ -787,6 +813,17 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
                 "last_provisional_sleep_start": (
                     self._persistent.last_provisional_sleep_start
                 ),
+                "last_waking_start": self._persistent.last_waking_start,
+                "waking_timeout_minutes": DEFAULT_WAKING_TIMEOUT_MINUTES,
+                "waking_timeout_at": (
+                    (
+                        waking_started
+                        + timedelta(minutes=DEFAULT_WAKING_TIMEOUT_MINUTES)
+                    ).isoformat()
+                    if waking_started is not None
+                    else None
+                ),
+                "reason": bio_reason,
                 "wake_needed": (
                     sleep_plan.wake_due if sleep_plan.available else wake_needed
                 ),
@@ -1017,6 +1054,43 @@ def _activity_reason(
     if activity == "pc_active":
         return "pc_active:pc"
     return activity
+
+
+def _bio_transition_reason(
+    *,
+    previous: str,
+    current: str,
+    presence_personal: str,
+    sleep_reason: str,
+    waking_started: datetime | None,
+    now: datetime,
+    recovered_start: bool,
+) -> str:
+    if recovered_start and current == BIO_WAKING:
+        return "waking_start_recovered_after_restart"
+    if current == BIO_WAKING and previous != BIO_WAKING:
+        return (
+            "hard_l_wake_start"
+            if sleep_reason == "hard_l_minimum_sleep_unmet"
+            else "calculated_wake_start"
+        )
+    if current == "awake" and previous == BIO_WAKING:
+        if (
+            waking_started is not None
+            and logic._elapsed_seconds(waking_started, now)
+            >= DEFAULT_WAKING_TIMEOUT_MINUTES * 60
+        ):
+            return "waking_timeout"
+        return "regular_wake_interaction"
+    if current == "awake" and previous in {BIO_SLEEP, BIO_PROVISIONAL_SLEEP}:
+        return (
+            "presence_departure"
+            if presence_personal == "abwesend"
+            else "regular_wake_interaction"
+        )
+    if current == BIO_PROVISIONAL_SLEEP:
+        return sleep_reason
+    return f"steady:{current}"
 
 
 def _scheduled_wake_for_sleep(
