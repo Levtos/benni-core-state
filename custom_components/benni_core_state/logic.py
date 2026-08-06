@@ -798,12 +798,12 @@ def compute_bio_state(
 ) -> tuple[str, datetime | None, datetime | None]:
     """Return the Phase-1 Bio state without inferring sleep.
 
-    \`\`provisional_sleep\`\` is a protection state only. It never creates a
+    ``provisional_sleep`` is a protection state only. It never creates a
     sleep-start timestamp and never satisfies minimum sleep. The internal
-    E/L/M/A contract may enter it from \`\`awake\`\` and may start \`\`waking\`\`
-    from either confirmed \`\`sleep\`\` or \`\`provisional_sleep\`\`.
-    \`\`wake_needed\`\` remains a disclosed compatibility fallback when
-    \`\`wake_due\`\` is not available.
+    E/L/M/A contract may enter it from ``awake`` and may start ``waking``
+    from either confirmed ``sleep`` or ``provisional_sleep``.
+    ``wake_needed`` remains a disclosed compatibility fallback when
+    ``wake_due`` is not available.
     """
 
     sleep_start = prev_sleep_start
