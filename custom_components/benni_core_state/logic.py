@@ -36,6 +36,7 @@ from .const import (
     BAND_NEAR,
     BAND_PREHEAT,
     BIO_AWAKE,
+    BIO_PROVISIONAL_SLEEP,
     BIO_SLEEP,
     BIO_WAKING,
     DAY_EARLY_NIGHT,
@@ -792,26 +793,22 @@ def compute_bio_state(
     prev_sleep_start: datetime | None,
     prev_awake_start: datetime | None,
     indicator_active_since: dict[str, datetime | None] | None = None,
+    provisional_active: bool = False,
+    wake_due: bool | None = None,
 ) -> tuple[str, datetime | None, datetime | None]:
-    """Bio is the single source of truth for sleep/waking/awake.
+    """Return the Phase-1 Bio state without inferring sleep.
 
-    Rules:
-
-    * ``sleep`` → ``waking`` when the Wake Planner says ``wake_needed``.
-    * ``sleep``/``waking`` → ``awake`` when an allowed wake indicator fires
-      in a non-night day state. Coffee/door are strong indicators; PC/PS5 are
-      explicit wake indicators too. TV is intentionally not an input.
-      Stale level-style indicators that were already active before sleep remain
-      ignored; fresh indicators are valid in every non-night phase.
-    * ``waking`` remains a Wake-Up-module transition state; the Wake Planner
-      alone never confirms awake.
-    * Leaving home while not asleep → awake (you can't physically leave while
-      sleeping; this catches a missed transition).
-    * Manual transitions (services.py) flow through this function by passing
-      ``prev_state`` already set to the desired target.
+    \`\`provisional_sleep\`\` is a protection state only. It never creates a
+    sleep-start timestamp and never satisfies minimum sleep. The internal
+    E/L/M/A contract may enter it from \`\`awake\`\` and may start \`\`waking\`\`
+    from either confirmed \`\`sleep\`\` or \`\`provisional_sleep\`\`.
+    \`\`wake_needed\`\` remains a disclosed compatibility fallback when
+    \`\`wake_due\`\` is not available.
     """
+
     sleep_start = prev_sleep_start
     awake_start = prev_awake_start
+    planned_wake = wake_needed if wake_due is None else wake_due
 
     strong = any(
         _indicator_can_wake(k, indicators, indicator_active_since, prev_sleep_start)
@@ -821,29 +818,33 @@ def compute_bio_state(
         _indicator_can_wake(k, indicators, indicator_active_since, prev_sleep_start)
         for k in _SOFT_INDICATORS
     )
-    activity_wake = (
-        wake_indicators_allowed(day_state)
-        and (strong or soft)
-    )
+    activity_wake = wake_indicators_allowed(day_state) and (strong or soft)
 
-    # Genuine departure forces awake — you can't be sleeping while walking out.
     if presence_personal == PERS_AWAY and prev_state != BIO_AWAKE:
         return BIO_AWAKE, sleep_start, now
 
     if prev_state == BIO_SLEEP:
         if activity_wake:
             return BIO_AWAKE, sleep_start, now
-        if wake_needed:
+        if planned_wake:
             return BIO_WAKING, sleep_start, awake_start
         return BIO_SLEEP, sleep_start, awake_start
+
+    if prev_state == BIO_PROVISIONAL_SLEEP:
+        if activity_wake:
+            return BIO_AWAKE, sleep_start, now
+        if planned_wake:
+            return BIO_WAKING, sleep_start, awake_start
+        return BIO_PROVISIONAL_SLEEP, sleep_start, awake_start
 
     if prev_state == BIO_WAKING:
         if activity_wake:
             return BIO_AWAKE, sleep_start, now
         return BIO_WAKING, sleep_start, awake_start
 
-    # prev_state == awake — only an explicit sleep service moves us back,
-    # which is handled by the caller setting prev_state to BIO_SLEEP.
+    if provisional_active:
+        return BIO_PROVISIONAL_SLEEP, sleep_start, awake_start
+
     return BIO_AWAKE, sleep_start, awake_start or now
 
 
