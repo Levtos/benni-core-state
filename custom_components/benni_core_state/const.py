@@ -84,6 +84,8 @@ CONF_TRACKER_FRESHNESS = "tracker_freshness"
 CONF_TRANSITION_HOLD = "transition_hold"
 CONF_WAKE_WINDOW_MINUTES = "wake_window_minutes"
 CONF_WAKE_FLOOR = "wake_floor"
+CONF_MINIMUM_SLEEP_MINUTES = "minimum_sleep_minutes"
+CONF_PROVISIONAL_LEAD_MINUTES = "provisional_lead_minutes"
 
 # --- Defaults ----------------------------------------------------------------
 
@@ -144,9 +146,10 @@ DEFAULT_PROXIMITY_TREND_EPSILON_M = 25
 
 # Bio
 BIO_SLEEP = "sleep"
+BIO_PROVISIONAL_SLEEP = "provisional_sleep"
 BIO_WAKING = "waking"
 BIO_AWAKE = "awake"
-BIO_STATES = [BIO_SLEEP, BIO_WAKING, BIO_AWAKE]
+BIO_STATES = [BIO_SLEEP, BIO_PROVISIONAL_SLEEP, BIO_WAKING, BIO_AWAKE]
 
 # Day state — nine calendar-derived phases.
 DAY_EARLY_NIGHT = "early_night"
@@ -320,6 +323,7 @@ UPDATE_INTERVAL = 30
 SERVICE_SET_BIO = "set_bio_state"
 SERVICE_MARK_SLEEP = "mark_sleep"
 SERVICE_MARK_AWAKE = "mark_awake"
+SERVICE_CONFIGURE_SLEEP_WINDOW = "configure_sleep_window"
 
 # --- Panel / WebSocket-API (eigenes Dashboard-Frontend) ----------------------
 # Muster wie benni_light_policy: statisch ausgeliefertes Vanilla-Lit-Frontend

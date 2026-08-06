@@ -14,9 +14,9 @@ The implementation mirrors the proven automatic planner semantics:
 * the Core-State absolute local wake floor (06:00 by default);
 * an inclusive, configurable wake window and a 30-day next-wake horizon.
 
-Manual overrides and the Core-State Bio lifecycle are intentionally not part
-of this module.  ``minimum_sleep_minutes`` is represented as an explicit
-out-of-scope diagnostic rather than inferred or calculated here.
+Manual overrides and the Core-State Bio lifecycle remain outside this module.
+The configured ``minimum_sleep_minutes`` value is carried into the separate
+Phase-1 E/L/M/A contract; this module still never infers sleep.
 """
 
 from __future__ import annotations
@@ -562,7 +562,9 @@ def plan_wake(inputs: WakePlanningInputs) -> WakePlan:
         wake_window_end=current.wake_window_end,
         wake_window_minutes=inputs.wake_window_minutes,
         minimum_sleep_minutes=inputs.minimum_sleep_minutes,
-        minimum_sleep_status="not_in_scope_by_issue_26",
+        minimum_sleep_status=(
+            "configured" if inputs.minimum_sleep_minutes is not None else "missing"
+        ),
         decided_by=current.decided_by,
         reason=current.reason,
         holiday_active=bool(holiday.is_holiday),
@@ -1147,7 +1149,9 @@ def _unavailable_plan(
         wake_window_end=None,
         wake_window_minutes=inputs.wake_window_minutes,
         minimum_sleep_minutes=inputs.minimum_sleep_minutes,
-        minimum_sleep_status="not_in_scope_by_issue_26",
+        minimum_sleep_status=(
+            "configured" if inputs.minimum_sleep_minutes is not None else "missing"
+        ),
         decided_by="core_state_unavailable",
         reason=reason,
         holiday_active=False,

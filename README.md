@@ -64,7 +64,7 @@ Die folgende Tabelle zeigt die Route **Benni**:
 | `sensor.benni_core_state_presence_effective` | enum | `home`, `away`, `arriving`, `leaving`, `uncertain`, `stale` |
 | `sensor.benni_core_state_presence_effective_transition` | enum | `home`, `away`, `arriving`, `leaving`, `uncertain`, `stale` |
 | `binary_sensor.benni_core_state_presence_preheat_active` | running | on / off |
-| `sensor.benni_core_state_bio_state` | enum | `sleep`, `waking`, `awake` |
+| `sensor.benni_core_state_bio_state` | enum | `sleep`, `provisional_sleep`, `waking`, `awake` |
 | `sensor.benni_core_state_day_state` | enum | `early_night`, `late_night`, `early_morning`, `forenoon`, `midday`, `afternoon`, `late_afternoon`, `evening`, `late_evening` |
 | `sensor.benni_core_state_day_context` | enum | `werktag`, `wochenende`, `frei` |
 | `sensor.benni_core_state_activity_state` | enum | `sleep`, `waking`, `idle`, `free_time`, `work_home`, `work_away`, `private_time`, `household` |
@@ -93,9 +93,7 @@ statt auf `unavailable` zu gehen.
   und **kein** Preheat.
 * **`coming_home`** entsteht nur aus echter Abwesenheit (vorheriger *realer*
   Presence-State war `abwesend`).
-* **Bio-State** ist die einzige Wahrheit für sleep/waking/awake. PC/PS5/Kaffee/Tür
-  sind Wake-Indizien (nur in Nicht-Nacht-Phasen wirksam), `wake_needed` nudgt nur
-  `sleep → waking`.
+* **Bio-State** ist die einzige Wahrheit für `sleep`, `provisional_sleep`, `waking` und `awake`. `provisional_sleep` ist nur der E/L/M/A-Schutzkorridor und zählt nie als bestätigter Schlaf. Der interne Wake-Plan startet `waking`; das alte `wake_needed` bleibt nur bei degradiertem Sleep-Window als sichtbarer Kompatibilitätsfallback.
 * **Day-State** folgt neun kalender-/datumsermittelten Phasen. Keine Grenze,
   einschließlich `00:00`, `midday` oder `14:00`, ist dauerhaft fest. Zwischen
   Winter- und Sommersonnenwende wächst der gesamte Nicht-Nacht-Block mit einer
@@ -118,6 +116,7 @@ statt auf `unavailable` zu gehen.
 benni_core_state.set_bio_state   (state: sleep | waking | awake)
 benni_core_state.mark_sleep      (Shortcut für state=sleep)
 benni_core_state.mark_awake      (Shortcut für state=awake)
+benni_core_state.configure_sleep_window (persistiert M und A)
 ```
 
 Funktional identisch zum Toolbox-Ist-Stand: der persistierte Bio-Zustand wird
@@ -194,7 +193,8 @@ Eigener Storage-Key — **nicht** der alte Toolbox-Key:
 
 Restart-fest (fachlich identisch zum Ist-Stand):
 
-* `bio_state`, `last_sleep_start`, `last_awake_start`
+* `bio_state`, `last_sleep_start`, `last_provisional_sleep_start`, `last_awake_start`
+* `minimum_sleep_minutes`, `provisional_lead_minutes`
 * `transition_state` + Startzeit
 * `preheat_active`, `preheat_source`, `preheat_started`
 
@@ -221,8 +221,9 @@ Der interne Wake-Planning-Shadow läuft nach #26 ebenfalls additiv parallel zum
 alten `ha_wake_planner`. Er nutzt die lokalen Kalender-/Zeitgrenzen und den
 kanonischen `day_state`, schaltet aber keinen Consumer um. Die Diagnose zeigt
 Ergebnis, Quelle, Quality/Freshness, Profil, Reason, Floor, Fenster und den
-Vergleichsstatus. `provisional_sleep`, `inferred_sleep`, `waking` und das
-Core-State-Bio-Modell sind ausdrücklich nicht Teil dieses Wake-Planners.
+Vergleichsstatus. Der separate Phase-1-Sleep-Window-Vertrag kombiniert diesen
+Plan mit E/L/M/A und dem manuellen Schlafbeginn. `inferred_sleep` bleibt
+weiterhin ausdrücklich außerhalb von Phase 1.
 
 Empfehlung: beide Sensorgruppen eine Weile nebeneinander beobachten, bevor
 Konsumenten (Automationen, YAML in `einhornzentrale`) umgestellt werden.

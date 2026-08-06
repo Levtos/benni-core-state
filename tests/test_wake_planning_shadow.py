@@ -166,13 +166,13 @@ def test_configurable_wake_window_is_inclusive() -> None:
     assert outside.wake_needed is False
 
 
-def test_minimum_sleep_is_explicitly_not_implemented_in_issue_26() -> None:
+def test_minimum_sleep_is_exposed_for_the_phase_1_sleep_window() -> None:
     plan = plan_wake(
         _inputs(datetime(2026, 8, 7, 5, 0, tzinfo=BERLIN))
     )
 
     assert plan.minimum_sleep_minutes is None
-    assert plan.minimum_sleep_status == "not_in_scope_by_issue_26"
+    assert plan.minimum_sleep_status == "missing"
 
 
 def test_calendar_wake_and_skip_markers_are_deterministic() -> None:

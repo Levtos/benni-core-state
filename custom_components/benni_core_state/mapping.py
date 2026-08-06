@@ -1,8 +1,9 @@
 """Versioned Core-State entity and legacy-resolution contract.
 
 This module is deliberately pure Python.  It records the mapping decision for
-the owner-local Core-State contract without changing consumers or implementing
-the later Bio lifecycle work from #27/#28.  The #26 Wake Shadow consumes this
+the owner-local Core-State contract without changing consumers. The Phase-1
+provisional-sleep contract from #27 is implemented; the full waking lifecycle
+remains gated by #28. The #26 Wake Shadow consumes this
 declarative mapping but keeps its comparison diagnostics in wake_planning.py.
 """
 
@@ -21,7 +22,7 @@ from .const import (
 )
 
 
-MAPPING_CONTRACT_VERSION: Final[str] = "1.1.1"
+MAPPING_CONTRACT_VERSION: Final[str] = "1.2.0"
 DEFAULT_CANONICAL_PROFILE: Final[str] = "benni"
 _COMPACT_DIAGNOSTIC_KEYS: Final[tuple[str, ...]] = (
     "mapping_key",
@@ -241,10 +242,19 @@ CANONICAL_MAPPINGS: Final[tuple[EntityMapping, ...]] = (
         contract_fact="Bio-State",
         domain="sensor",
         allowed_states=tuple(BIO_STATES),
-        attributes=("last_sleep_start", "last_awake_start", "wake_needed", "wake_next", "indicator_*"),
-        current_source=("internal:coordinator.compute_bio_state", "binary_sensor.wake_planner_benni_wake_needed"),
+        attributes=(
+            "last_sleep_start",
+            "last_provisional_sleep_start",
+            "last_awake_start",
+            "sleep_window",
+            "indicator_*",
+        ),
+        current_source=(
+            "internal:coordinator.compute_bio_state",
+            "internal:core_state.sleep_window",
+        ),
         legacy_references=("sensor.benni_context_bio_state", "sensor.benni_combined_context_bio_state"),
-        reason="Bio-State ist die bestehende und einzige Core-State-Wahrheit für sleep/waking/awake; Wake-Planner-Inputs sind nur Ist-Quellen.",
+        reason="Bio-State ist die einzige Core-State-Wahrheit für sleep/provisional_sleep/waking/awake; E/L/M/A kommt aus dem internen Sleep-Window-Vertrag.",
         consumer_issue="https://github.com/Levtos/benni-core-state/issues/25",
     ),
     EntityMapping(
@@ -254,20 +264,27 @@ CANONICAL_MAPPINGS: Final[tuple[EntityMapping, ...]] = (
         domain="sensor",
         unique_id_template=_uid_template("bio_state"),
         allowed_states=tuple(BIO_STATES),
-        attributes=("last_sleep_start", "last_awake_start", "reason", "source"),
-        owner="benni-core-state (L1; #27 nach #26)",
-        current_source=("not_implemented:benni-core-state#27",),
+        attributes=(
+            "last_provisional_sleep_start",
+            "sleep_window",
+            "reason",
+            "source",
+        ),
+        owner="benni-core-state (L1)",
+        current_source=(
+            "internal:core_state.sleep_window",
+            "internal:coordinator.compute_bio_state",
+        ),
         legacy_references=(),
-        legacy_resolution=LEGACY_OPEN_GATE,
-        status=STATUS_PLANNED,
-        reason="#25 ordnet den zukünftigen Zustand dem bestehenden Bio-State-Vertrag zu; #26/#27 implementieren ihn nicht in diesem Schritt.",
-        planned_cutover="Erst nach #26/#27, fokussiertem Shadow und separatem Consumer-Gate; keine neue Entity und kein neuer Consumer-State in #25.",
-        rollback="Bis zur späteren Freigabe bleibt der aktuelle Bio-State ohne provisional_sleep; keine Legacy-Entity wird entfernt.",
+        legacy_resolution=LEGACY_CANONICAL,
+        status=STATUS_CANONICAL_CURRENT,
+        reason="#27 veröffentlicht den Schutzkorridor als Wert des bestehenden Bio-State-Vertrags; er zählt nicht als bestätigter Schlaf.",
+        planned_cutover="Consumer-Rebind bleibt ein separates Shadow-/Cutover-Gate; keine neue Entity wird erzeugt.",
+        rollback="Bio-Consumer bleiben bis zu ihrem eigenen Cutover auf den bisherigen Quellen; keine Legacy-Entity wird entfernt.",
         consumer_issue="https://github.com/Levtos/benni-core-state/issues/27",
         entity_id_pattern="sensor.{profile}_core_state_bio_state",
         entity_suffix="bio_state",
-        target_attributes=("bio_state",),
-        future_states=("provisional_sleep",),
+        target_attributes=("bio_state", "sleep_window"),
     ),
     EntityMapping(
         mapping_key="waking",
