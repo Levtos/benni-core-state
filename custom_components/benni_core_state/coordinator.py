@@ -671,11 +671,15 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
             waking_started = now
             self._persistent.last_waking_start = now.isoformat()
 
+        interaction_reference_start = (
+            _parse_iso(self._persistent.last_sleep_start)
+            or _parse_iso(self._persistent.last_provisional_sleep_start)
+        )
         regular_interaction = logic.regular_wake_interaction(
             indicators=wake_indicators,
             day_state=day_state,
             indicator_active_since=wake_indicator_active_since,
-            sleep_started=_parse_iso(self._persistent.last_sleep_start),
+            sleep_started=interaction_reference_start,
         )
         new_bio, sleep_start, awake_start = logic.compute_bio_state(
             prev_state=previous_bio,
@@ -691,6 +695,7 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
             wake_due=sleep_plan.wake_due if sleep_plan.available else None,
             waking_started=waking_started,
             waking_timeout_minutes=DEFAULT_WAKING_TIMEOUT_MINUTES,
+            interaction_reference_start=interaction_reference_start,
         )
         if new_bio == BIO_WAKING and previous_bio != BIO_WAKING:
             waking_started = now
