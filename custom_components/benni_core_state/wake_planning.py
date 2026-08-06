@@ -1149,7 +1149,9 @@ def _unavailable_plan(
         wake_window_end=None,
         wake_window_minutes=inputs.wake_window_minutes,
         minimum_sleep_minutes=inputs.minimum_sleep_minutes,
-        minimum_sleep_status="not_in_scope_by_issue_26",
+        minimum_sleep_status=(
+            "configured" if inputs.minimum_sleep_minutes is not None else "missing"
+        ),
         decided_by="core_state_unavailable",
         reason=reason,
         holiday_active=False,
