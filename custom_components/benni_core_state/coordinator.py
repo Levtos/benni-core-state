@@ -1085,14 +1085,10 @@ def _bio_transition_reason(
             else "calculated_wake_start"
         )
     if current == BIO_AWAKE and previous == BIO_WAKING:
+        if presence_personal == PERS_AWAY:
+            return "presence_departure"
         if regular_interaction:
             return "regular_wake_interaction"
-        if (
-            waking_started is not None
-            and logic._elapsed_seconds(waking_started, now)
-            >= DEFAULT_WAKING_TIMEOUT_MINUTES * 60
-        ):
-            return "waking_timeout"
         return "waking_timeout"
     if current == BIO_AWAKE and previous in {BIO_SLEEP, BIO_PROVISIONAL_SLEEP}:
         return (
