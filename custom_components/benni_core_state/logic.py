@@ -783,6 +783,26 @@ def _indicator_can_wake(
     return active_since > prev_sleep_start
 
 
+def regular_wake_interaction(
+    *,
+    indicators: dict[str, bool],
+    day_state: str | None,
+    indicator_active_since: dict[str, datetime | None] | None,
+    sleep_started: datetime | None,
+) -> bool:
+    """Return the existing regular wake interaction with all context gates."""
+
+    strong = any(
+        _indicator_can_wake(k, indicators, indicator_active_since, sleep_started)
+        for k in _STRONG_INDICATORS
+    )
+    soft = any(
+        _indicator_can_wake(k, indicators, indicator_active_since, sleep_started)
+        for k in _SOFT_INDICATORS
+    )
+    return wake_indicators_allowed(day_state) and (strong or soft)
+
+
 def compute_bio_state(
     *,
     prev_state: str,
@@ -813,15 +833,12 @@ def compute_bio_state(
     awake_start = prev_awake_start
     planned_wake = wake_needed if wake_due is None else wake_due
 
-    strong = any(
-        _indicator_can_wake(k, indicators, indicator_active_since, prev_sleep_start)
-        for k in _STRONG_INDICATORS
+    activity_wake = regular_wake_interaction(
+        indicators=indicators,
+        day_state=day_state,
+        indicator_active_since=indicator_active_since,
+        sleep_started=prev_sleep_start,
     )
-    soft = any(
-        _indicator_can_wake(k, indicators, indicator_active_since, prev_sleep_start)
-        for k in _SOFT_INDICATORS
-    )
-    activity_wake = wake_indicators_allowed(day_state) and (strong or soft)
 
     if presence_personal == PERS_AWAY and prev_state != BIO_AWAKE:
         return BIO_AWAKE, sleep_start, now
