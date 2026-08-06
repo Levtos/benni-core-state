@@ -32,6 +32,8 @@ from homeassistant.util import dt as dt_util
 from . import logic
 from .const import (
     ACTIVITY_HOLD_STRENGTH,
+    BIO_PROVISIONAL_SLEEP,
+    BIO_SLEEP,
     CONF_COFFEE_ACTIVE,
     CONF_DOOR_WAKE,
     CONF_ENTERTAINMENT_ACTIVE,
@@ -48,12 +50,14 @@ from .const import (
     CONF_MEDIA_ACTIVITY_CONTEXT,
     CONF_MEDIA_CONTEXT,
     CONF_MEDIA_DEVICE,
+    CONF_MINIMUM_SLEEP_MINUTES,
     CONF_PARENTS_SSIDS,
     CONF_NEAR_RADIUS,
     CONF_PC_ACTIVE,
     CONF_PREHEAT_DURATION,
     CONF_PREHEAT_RADIUS,
     CONF_PRIVATE_SOURCE,
+    CONF_PROVISIONAL_LEAD_MINUTES,
     CONF_PROXIMITY_DIRECTION,
     CONF_PROXIMITY_DISTANCE,
     CONF_PS5_ACTIVE,
@@ -89,7 +93,7 @@ from .const import (
 )
 from .models import ComputedState, PersistentState
 from .mapping import MAPPING_CONTRACT_VERSION, mapping_diagnostics
-from . import wake_planning
+from . import sleep_window, wake_planning
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -351,6 +355,26 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
         except (TypeError, ValueError):
             routine_duration = 60
 
+        minimum_sleep_minutes = _positive_int(
+            self._persistent.minimum_sleep_minutes
+            if self._persistent.minimum_sleep_minutes is not None
+            else self._opt(
+                CONF_MINIMUM_SLEEP_MINUTES,
+                wake_state_attrs.get("minimum_sleep_minutes"),
+            )
+        )
+        provisional_lead_minutes = _positive_int(
+            self._persistent.provisional_lead_minutes
+            if self._persistent.provisional_lead_minutes is not None
+            else self._opt(
+                CONF_PROVISIONAL_LEAD_MINUTES,
+                wake_state_attrs.get(
+                    "provisional_lead_minutes",
+                    wake_state_attrs.get("max_assumed_sleep_minutes"),
+                ),
+            )
+        )
+
         source_status = (
             wake_planning.WakeInputStatus(
                 name="local_time",
@@ -422,6 +446,7 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
             calendar_conflict_behavior=conflict_behavior,
             holiday_behavior=holiday_behavior,
             source_status=source_status,
+            minimum_sleep_minutes=minimum_sleep_minutes,
         )
         plan = wake_planning.plan_wake(inputs)
 
@@ -590,24 +615,6 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
         day_phase_diagnostics = logic.compute_day_phase_diagnostics(
             local_now, day_state
         )
-        new_bio, sleep_start, awake_start = logic.compute_bio_state(
-            prev_state=self._persistent.bio_state,
-            wake_needed=wake_needed,
-            indicators=wake_indicators,
-            presence_personal=presence_personal,
-            day_state=day_state,
-            now=now,
-            prev_sleep_start=_parse_iso(self._persistent.last_sleep_start),
-            prev_awake_start=_parse_iso(self._persistent.last_awake_start),
-            indicator_active_since=wake_indicator_active_since,
-        )
-        self._persistent.bio_state = new_bio
-        self._persistent.last_sleep_start = (
-            sleep_start.isoformat() if sleep_start else None
-        )
-        self._persistent.last_awake_start = (
-            awake_start.isoformat() if awake_start else None
-        )
 
         holiday_raw, holiday_ts, _ = self._read_entity(CONF_HOLIDAY_SENSOR)
         holiday = _state_is_true(holiday_raw)
@@ -629,6 +636,63 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
             legacy_holiday_ts=legacy_holiday_ts,
             holiday_raw=holiday_raw,
             holiday_ts=holiday_ts,
+        )
+        scheduled_wake = _scheduled_wake_for_sleep(wake_plan, local_now)
+        confirmed_sleep_start = (
+            _parse_iso(self._persistent.last_sleep_start)
+            if self._persistent.bio_state == BIO_SLEEP
+            else None
+        )
+        sleep_plan = sleep_window.plan_sleep_window(
+            now=local_now,
+            scheduled_wake=scheduled_wake,
+            wake_window_minutes=wake_plan.wake_window_minutes,
+            manual_sleep_start=(
+                dt_util.as_local(confirmed_sleep_start)
+                if confirmed_sleep_start is not None
+                else None
+            ),
+            minimum_sleep_minutes=wake_plan.minimum_sleep_minutes,
+            provisional_lead_minutes=_positive_int(
+                self._persistent.provisional_lead_minutes
+                if self._persistent.provisional_lead_minutes is not None
+                else self._opt(
+                    CONF_PROVISIONAL_LEAD_MINUTES,
+                    wake_state_attrs.get(
+                        "provisional_lead_minutes",
+                        wake_state_attrs.get("max_assumed_sleep_minutes"),
+                    ),
+                )
+            ),
+            wake_source_status=wake_plan.source_status,
+            wake_source_quality=wake_plan.source_quality,
+        )
+
+        previous_bio = self._persistent.bio_state
+        new_bio, sleep_start, awake_start = logic.compute_bio_state(
+            prev_state=previous_bio,
+            wake_needed=wake_needed,
+            indicators=wake_indicators,
+            presence_personal=presence_personal,
+            day_state=day_state,
+            now=now,
+            prev_sleep_start=_parse_iso(self._persistent.last_sleep_start),
+            prev_awake_start=_parse_iso(self._persistent.last_awake_start),
+            indicator_active_since=wake_indicator_active_since,
+            provisional_active=sleep_plan.provisional_active,
+            wake_due=sleep_plan.wake_due if sleep_plan.available else None,
+        )
+        if (
+            new_bio == BIO_PROVISIONAL_SLEEP
+            and previous_bio != BIO_PROVISIONAL_SLEEP
+        ):
+            self._persistent.last_provisional_sleep_start = now.isoformat()
+        self._persistent.bio_state = new_bio
+        self._persistent.last_sleep_start = (
+            sleep_start.isoformat() if sleep_start else None
+        )
+        self._persistent.last_awake_start = (
+            awake_start.isoformat() if awake_start else None
         )
 
         media_ctx, _, _ = self._read_entity(CONF_MEDIA_CONTEXT)
@@ -732,8 +796,19 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
             "bio_state": {
                 "last_sleep_start": self._persistent.last_sleep_start,
                 "last_awake_start": self._persistent.last_awake_start,
-                "wake_needed": wake_needed,
+                "last_provisional_sleep_start": (
+                    self._persistent.last_provisional_sleep_start
+                ),
+                "wake_needed": (
+                    sleep_plan.wake_due if sleep_plan.available else wake_needed
+                ),
+                "wake_source": (
+                    "internal:core_state.sleep_window"
+                    if sleep_plan.available
+                    else "legacy_fallback:wake_needed"
+                ),
                 "wake_next": wake_next_raw,
+                "sleep_window": sleep_plan.as_attributes(),
                 **{f"indicator_{k}": v for k, v in wake_indicators.items()},
                 **{
                     f"indicator_{k}_active_since": (
@@ -954,6 +1029,32 @@ def _activity_reason(
     if activity == "pc_active":
         return "pc_active:pc"
     return activity
+
+
+def _scheduled_wake_for_sleep(
+    plan: wake_planning.WakePlan, local_now: datetime
+) -> datetime | None:
+    """Keep today's wake selected through hard L; otherwise use next wake."""
+
+    if (
+        plan.wake_time is not None
+        and plan.wake_window_end is not None
+        and local_now <= plan.wake_window_end
+    ):
+        return datetime.combine(
+            plan.calendar_date,
+            plan.wake_time,
+            tzinfo=local_now.tzinfo,
+        )
+    return plan.next_wake
+
+
+def _positive_int(raw: Any) -> int | None:
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return None
+    return value if value > 0 else None
 
 
 def _float_or_none(raw: Any) -> float | None:
