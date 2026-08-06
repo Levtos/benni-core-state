@@ -818,6 +818,7 @@ def compute_bio_state(
     wake_due: bool | None = None,
     waking_started: datetime | None = None,
     waking_timeout_minutes: int = DEFAULT_WAKING_TIMEOUT_MINUTES,
+    interaction_reference_start: datetime | None = None,
 ) -> tuple[str, datetime | None, datetime | None]:
     """Return the Phase-1 Bio state without inferring sleep.
 
@@ -837,7 +838,11 @@ def compute_bio_state(
         indicators=indicators,
         day_state=day_state,
         indicator_active_since=indicator_active_since,
-        sleep_started=prev_sleep_start,
+        sleep_started=(
+            interaction_reference_start
+            if interaction_reference_start is not None
+            else prev_sleep_start
+        ),
     )
 
     if presence_personal == PERS_AWAY and prev_state != BIO_AWAKE:
