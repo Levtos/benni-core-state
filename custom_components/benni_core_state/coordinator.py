@@ -363,18 +363,6 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
                 wake_state_attrs.get("minimum_sleep_minutes"),
             )
         )
-        provisional_lead_minutes = _positive_int(
-            self._persistent.provisional_lead_minutes
-            if self._persistent.provisional_lead_minutes is not None
-            else self._opt(
-                CONF_PROVISIONAL_LEAD_MINUTES,
-                wake_state_attrs.get(
-                    "provisional_lead_minutes",
-                    wake_state_attrs.get("max_assumed_sleep_minutes"),
-                ),
-            )
-        )
-
         source_status = (
             wake_planning.WakeInputStatus(
                 name="local_time",
