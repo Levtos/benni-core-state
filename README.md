@@ -73,6 +73,7 @@ Die folgende Tabelle zeigt die Route **Benni**:
 | `sensor.benni_core_state_next_wake` | timestamp | lokaler nächster Wake-Zeitpunkt (read-only Shadow) |
 | `binary_sensor.benni_core_state_wake_needed` | running | inklusives konfiguriertes Wake-Fenster (read-only Shadow) |
 | `binary_sensor.benni_core_state_holiday_active` | binary | Holiday-/Wochenend-Projektion (read-only Shadow) |
+| `binary_sensor.benni_core_state_apply_ready` | binary | prozessweiter Startup-/Apply-Readiness-Contract; initial off, nach 90 s einmal on |
 
 Jeder Sensor trägt seine Rohdaten/Schwellen als `extra_state_attributes`
 (Tracker-Werte, Distanz, Radien, Wake-Indizien, Preheat-Quelle …). Presence- und

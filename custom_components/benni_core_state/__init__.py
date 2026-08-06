@@ -18,10 +18,11 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 
-from .const import DATA_WS_REGISTERED, DOMAIN
+from .const import DATA_STARTUP_READINESS, DATA_WS_REGISTERED, DOMAIN
 from .coordinator import BenniCoreStateCoordinator, all_coordinators
 from .mapping import LEGACY_CONFIG_COMPATIBILITY, resolve_legacy_entity
 from .services import async_register_services, async_unregister_services
+from .startup_readiness_runtime import async_ensure_startup_readiness
 from .view import async_remove_view, async_setup_view
 from .websocket_api import async_setup_websocket_api
 
@@ -58,6 +59,11 @@ def _migrated_entry_sources(entry: ConfigEntry) -> tuple[bool, dict, dict]:
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    # Initialize before any awaited coordinator work so the lifecycle hook is
+    # registered before EVENT_HOMEASSISTANT_STARTED can fire.  The runtime is
+    # intentionally retained in hass.data across entry reloads.
+    startup_readiness = async_ensure_startup_readiness(hass)
+
     changed, data, options = _migrated_entry_sources(entry)
     if changed:
         hass.config_entries.async_update_entry(entry, data=data, options=options)
@@ -69,6 +75,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     data = hass.data.setdefault(DOMAIN, {})
     data[entry.entry_id] = coordinator
+    data[DATA_STARTUP_READINESS] = startup_readiness
 
     coordinator.async_start_listeners()
     entry.async_on_unload(coordinator.async_stop_listeners)

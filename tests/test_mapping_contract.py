@@ -53,6 +53,7 @@ def test_required_fact_mappings_have_domains_states_attributes_and_owners() -> N
         "vacation",
         "automatic_day_profile",
         "live_status",
+        "apply_ready",
     }
     assert required <= set(m.MAPPING_BY_KEY)
 
@@ -93,6 +94,30 @@ def test_old_outputs_keep_actual_semantics_and_are_not_rebound_now() -> None:
     assert m.mapping_for("wake_needed").allowed_states == ("on", "off")
     assert "Bio-State" not in m.mapping_for("wake_needed").contract_fact
     assert m.mapping_for("waking").status == m.STATUS_ATTRIBUTE_ONLY
+
+
+def test_startup_apply_ready_mapping_is_canonical_and_diagnostic() -> None:
+    mapping = m.mapping_for("apply_ready")
+    assert mapping is not None
+    assert mapping.canonical_entity_id == "binary_sensor.benni_core_state_apply_ready"
+    assert mapping.owner
+    assert mapping.current_source
+    assert mapping.status == m.STATUS_CANONICAL_CURRENT
+    assert mapping.reason
+    assert "ready_at" in mapping.attributes
+    assert "startup_delay" in mapping.attributes
+    assert "startup_phase" in mapping.attributes
+    assert "system_" not in mapping.canonical_entity_id
+
+    for old_id in (
+        "binary_sensor.system_apply_ready",
+        "binary_sensor.system_benni_context_ready",
+        "input_boolean.system_startup_stable",
+    ):
+        resolution = m.resolve_legacy_entity(old_id)
+        assert resolution.mapping_key == "apply_ready"
+        assert resolution.target_entity_id == mapping.canonical_entity_id
+        assert resolution.status == m.LEGACY_REPLACE_AFTER_CUTOVER
 
 
 def test_legacy_resolution_is_explicit_and_unknowns_fail_loud() -> None:
@@ -141,7 +166,9 @@ def test_owner_local_diagnostics_always_expose_source_target_status_reason() -> 
     for row in rows:
         assert row["source"]
         assert "target" in row
+        assert row["owner"]
         assert row["status"]
         assert row["reason"]
+        assert row["contract_version"] == m.MAPPING_CONTRACT_VERSION
         if row["target"] is not None:
             assert "system_" not in str(row["target"])
