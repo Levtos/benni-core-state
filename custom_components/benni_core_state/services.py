@@ -20,6 +20,7 @@ from homeassistant.util import dt as dt_util
 from .const import (
     BIO_AWAKE,
     BIO_SLEEP,
+    BIO_WAKING,
     DOMAIN,
     SERVICE_CONFIGURE_SLEEP_WINDOW,
     SERVICE_MARK_AWAKE,
@@ -29,7 +30,7 @@ from .const import (
 from .coordinator import all_coordinators
 
 SET_BIO_SCHEMA = vol.Schema(
-    {vol.Required("state"): vol.In((BIO_SLEEP, "waking", BIO_AWAKE))}
+    {vol.Required("state"): vol.In((BIO_SLEEP, BIO_WAKING, BIO_AWAKE))}
 )
 CONFIGURE_SLEEP_WINDOW_SCHEMA = vol.Schema(
     {
