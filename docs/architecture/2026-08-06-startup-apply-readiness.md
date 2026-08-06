@@ -15,6 +15,16 @@ read or calculate `apply_enabled`, Lux, Manual-Off, source health, or any
 policy decision. A consumer may therefore expose a calculated plan while
 keeping its own Apply operation blocked until this entity is `on`.
 
+## Entity-registry normalization
+
+The live Benni registry evidence for Issue #33 showed the current Core-State
+unique ID under `binary_sensor.system_benni_core_state_apply_ready`, while the
+published clean contract is `binary_sensor.benni_core_state_apply_ready`. Core
+State now supplies the clean entity ID explicitly and, before forwarding its
+platforms, renames only that exact evidenced registry entry. The registry entry
+and its history are retained. A target collision or any other unlisted current
+path is logged as a blocker; no guessed rename or YAML alias is created.
+
 ## Lifecycle
 
 1. Before `EVENT_HOMEASSISTANT_STARTED`, the entity is available and `off`.

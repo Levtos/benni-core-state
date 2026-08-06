@@ -39,6 +39,7 @@ from .const import (
 )
 from . import logic
 from .coordinator import BenniCoreStateCoordinator, coordinator_from_hass
+from .entity_registry_migration import startup_apply_ready_entity_id
 from .models import ComputedState
 from .startup_readiness_runtime import (
     StartupReadinessRuntime,
@@ -138,6 +139,13 @@ class StartupApplyReadyBinarySensor(BinarySensorEntity):
         self._runtime = runtime
         self._remove_runtime_listener = None
         self._attr_unique_id = unique_id(entry.entry_id, "apply_ready")
+        # Entity Registry uses an explicitly supplied entity_id as the
+        # integration's suggested object ID.  This keeps the published clean
+        # route deterministic even when the device name/area is customized.
+        profile = entry.data.get(CONF_PROFILE, DEFAULT_PROFILE)
+        self.entity_id = startup_apply_ready_entity_id(
+            profile if isinstance(profile, str) else DEFAULT_PROFILE
+        )
         self._attr_device_info = _device_info(entry)
 
     async def async_added_to_hass(self) -> None:

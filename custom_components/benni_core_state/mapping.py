@@ -21,7 +21,7 @@ from .const import (
 )
 
 
-MAPPING_CONTRACT_VERSION: Final[str] = "1.1.0"
+MAPPING_CONTRACT_VERSION: Final[str] = "1.1.1"
 DEFAULT_CANONICAL_PROFILE: Final[str] = "benni"
 
 # The nine values are the corrected #24 target contract.  They intentionally do
@@ -516,6 +516,7 @@ CANONICAL_MAPPINGS: Final[tuple[EntityMapping, ...]] = (
             "ha_lifecycle:EVENT_HOMEASSISTANT_STARTED",
         ),
         legacy_references=(
+            "binary_sensor.system_benni_core_state_apply_ready",
             "binary_sensor.system_apply_ready",
             "binary_sensor.system_benni_context_ready",
             "input_boolean.system_startup_stable",
@@ -563,6 +564,15 @@ LEGACY_RESOLUTIONS: Final[tuple[LegacyResolution, ...]] = (
         LEGACY_CONFIG_COMPATIBILITY,
         "pc_source_rebind",
         "Temporary Core-State config compatibility; the old input remains documented and is not a consumer alias.",
+    ),
+    LegacyResolution(
+        "binary_sensor.system_benni_core_state_apply_ready",
+        _entity("binary_sensor", "apply_ready"),
+        LEGACY_REPLACE_AFTER_CUTOVER,
+        "apply_ready",
+        "Live HA registry evidence showed the Core-State unique_id under this "
+        "system_-prefixed path; Core State migrates only this exact registry entry "
+        "to the clean target and creates no YAML alias.",
     ),
     LegacyResolution(
         "binary_sensor.system_apply_ready",

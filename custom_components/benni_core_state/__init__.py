@@ -17,9 +17,23 @@ import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 
-from .const import DATA_STARTUP_READINESS, DATA_WS_REGISTERED, DOMAIN
+from .const import (
+    CONF_PROFILE,
+    DATA_STARTUP_READINESS,
+    DATA_WS_REGISTERED,
+    DEFAULT_PROFILE,
+    DOMAIN,
+    unique_id,
+)
 from .coordinator import BenniCoreStateCoordinator, all_coordinators
+from .entity_registry_migration import (
+    STARTUP_APPLY_READY_DOMAIN,
+    STARTUP_APPLY_READY_SUFFIX,
+    decide_startup_apply_ready_registry_migration,
+    startup_apply_ready_entity_id,
+)
 from .mapping import LEGACY_CONFIG_COMPATIBILITY, resolve_legacy_entity
 from .services import async_register_services, async_unregister_services
 from .startup_readiness_runtime import async_ensure_startup_readiness
@@ -58,11 +72,61 @@ def _migrated_entry_sources(entry: ConfigEntry) -> tuple[bool, dict, dict]:
     return changed, data, options
 
 
+def _migrate_startup_apply_ready_entity_id(
+    hass: HomeAssistant, entry: ConfigEntry
+) -> None:
+    """Normalize the exact live-observed registry path before platform setup."""
+
+    profile = entry.data.get(CONF_PROFILE, DEFAULT_PROFILE)
+    target_entity_id = startup_apply_ready_entity_id(
+        profile if isinstance(profile, str) else DEFAULT_PROFILE
+    )
+    registry = er.async_get(hass)
+    current_entity_id = registry.async_get_entity_id(
+        STARTUP_APPLY_READY_DOMAIN,
+        DOMAIN,
+        unique_id(entry.entry_id, STARTUP_APPLY_READY_SUFFIX),
+    )
+    target_in_use = current_entity_id != target_entity_id and (
+        registry.async_get(target_entity_id) is not None
+        or hass.states.get(target_entity_id) is not None
+    )
+    decision = decide_startup_apply_ready_registry_migration(
+        current_entity_id,
+        target_entity_id,
+        target_in_use=target_in_use,
+    )
+
+    if decision.action == "migrate":
+        assert decision.source_entity_id is not None
+        registry.async_update_entity(
+            decision.source_entity_id,
+            new_entity_id=decision.target_entity_id,
+        )
+        _LOGGER.info(
+            "Migrated Core-State Startup-/Apply-Ready entity ID: source=%s target=%s",
+            decision.source_entity_id,
+            decision.target_entity_id,
+        )
+    elif decision.action == "block":
+        _LOGGER.error(
+            "Could not normalize Core-State Startup-/Apply-Ready entity ID: "
+            "source=%s target=%s reason=%s",
+            decision.source_entity_id,
+            decision.target_entity_id,
+            decision.reason,
+        )
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Initialize before any awaited coordinator work so the lifecycle hook is
     # registered before EVENT_HOMEASSISTANT_STARTED can fire.  The runtime is
     # intentionally retained in hass.data across entry reloads.
     startup_readiness = async_ensure_startup_readiness(hass)
+
+    # Run before forwarding either platform so an existing unique_id cannot
+    # keep the entity under the observed system_-prefixed registry path.
+    _migrate_startup_apply_ready_entity_id(hass, entry)
 
     changed, data, options = _migrated_entry_sources(entry)
     if changed:
