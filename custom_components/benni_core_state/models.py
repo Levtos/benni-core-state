@@ -19,6 +19,9 @@ class PersistentState:
     bio_state: str = BIO_SLEEP
     last_sleep_start: str | None = None
     last_awake_start: str | None = None
+    last_provisional_sleep_start: str | None = None
+    minimum_sleep_minutes: int | None = None
+    provisional_lead_minutes: int | None = None
     transition_state: str = "none"
     transition_started: str | None = None
     effective_presence: str = "stale"
