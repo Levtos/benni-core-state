@@ -78,6 +78,7 @@ from .const import (
     DEFAULT_HOME_RADIUS,
     DEFAULT_HYSTERESIS_M,
     DEFAULT_NEAR_RADIUS,
+    DEFAULT_ACTIVITY_FEED_FRESHNESS_SECONDS,
     DEFAULT_PREHEAT_DURATION,
     DEFAULT_PREHEAT_RADIUS,
     DEFAULT_PROFILE,
@@ -498,7 +499,8 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
         # first post-boot compute, before trackers have restored).
         self._persistent.last_presence_personal = presence_personal
 
-        external_occupied = self._read_bool(CONF_HOUSEHOLD_SOURCE)
+        household_raw, _, _ = self._read_entity(CONF_HOUSEHOLD_SOURCE)
+        external_occupied = _state_is_true(household_raw)
         presence_household = logic.compute_presence_household(
             presence_personal, external_occupied
         )
@@ -726,36 +728,70 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
         )
 
         media_ctx, _, _ = self._read_entity(CONF_MEDIA_CONTEXT)
-        private_active = self._read_bool(CONF_PRIVATE_SOURCE)
-        homeoffice = self._read_bool(CONF_HOMEOFFICE_PING)
-        pc_active = self._read_bool(CONF_PC_ACTIVE)
-        # Activity v2 (PR2 / FLEET-256): Media-Hälfte kommt aus EINEM media_state-
-        # Feed. Core liest keine Roh-Player/Denon/Stash mehr (keine Doppel-
-        # Detektion, kein Roh-Fallback). Feed-State = Media-Bucket, Attribute nur
-        # Debug/Provenienz. Fehlt/unavailable → kein Media-Bucket (kein Crash).
-        feed_state, _, feed_attrs = self._read_entity(CONF_MEDIA_ACTIVITY_CONTEXT)
-        feed_available = feed_state not in (None, "unknown", "unavailable", "")
-        # entertainment/gaming_platform/media_device bleiben Debug-Echo (Attribut).
+        private_raw, _, _ = self._read_entity(CONF_PRIVATE_SOURCE)
+        homeoffice_raw, _, _ = self._read_entity(CONF_HOMEOFFICE_PING)
+        pc_raw, _, _ = self._read_entity(CONF_PC_ACTIVE)
+        private_active = _state_is_true(private_raw)
+        homeoffice = _state_is_true(homeoffice_raw)
+        pc_active = _state_is_true(pc_raw)
+        # Activity decision: the Media-State entity is a read-only input feed;
+        # Core State owns the global precedence and records feed age/quality
+        # before allowing a Media candidate to win.
+        feed_state, feed_last_changed, feed_attrs = self._read_entity(
+            CONF_MEDIA_ACTIVITY_CONTEXT
+        )
+        feed_source = self._entity_id(CONF_MEDIA_ACTIVITY_CONTEXT) or (
+            "unbound:media_state.activity_context"
+        )
+        activity_source_status = {
+            "configured:private_source": _activity_source_quality(
+                private_raw, self._entity_id(CONF_PRIVATE_SOURCE)
+            ),
+            "configured:homeoffice_ping": _activity_source_quality(
+                homeoffice_raw, self._entity_id(CONF_HOMEOFFICE_PING)
+            ),
+            "configured:household_source": _activity_source_quality(
+                household_raw, self._entity_id(CONF_HOUSEHOLD_SOURCE)
+            ),
+            "configured:pc_active": _activity_source_quality(
+                pc_raw, self._entity_id(CONF_PC_ACTIVE)
+            ),
+        }
+        activity_decision = logic.compute_activity_decision(
+            bio=new_bio,
+            presence_personal=presence_personal,
+            day_context=day_context,
+            homeoffice=homeoffice,
+            private_active=private_active,
+            household_active=external_occupied,
+            media_activity=feed_state,
+            decision_timestamp=now,
+            pc_active=pc_active,
+            media_activity_quality=(
+                feed_attrs.get("quality") or feed_attrs.get("source_quality")
+            ),
+            media_activity_freshness=(
+                feed_attrs.get("freshness") or feed_attrs.get("freshness_status")
+            ),
+            media_activity_degraded=feed_attrs.get("degraded"),
+            media_activity_last_changed=feed_last_changed,
+            media_activity_source=feed_source,
+            media_activity_freshness_s=DEFAULT_ACTIVITY_FEED_FRESHNESS_SECONDS,
+            source_status=activity_source_status,
+        )
+        activity = activity_decision.winner
+        feed_quality = activity_decision.freshness[feed_source]["status"]
+        feed_available = (
+            feed_state not in (None, "unknown", "unavailable", "")
+            and feed_quality == "fresh"
+        )
+        activity_reason = activity_decision.precedence_reason
+        # entertainment/gaming_platform/media_device remain Debug-Echo (attribute).
         entertainment_active = self._read_bool(CONF_ENTERTAINMENT_ACTIVE)
         gaming_platform, _, _ = self._read_entity(CONF_GAMING_PLATFORM)
         media_device, _, _ = self._read_entity(CONF_MEDIA_DEVICE)
         # music_active/hold_strength/reason etc. aus dem Feed (nur Attribut).
         media_music_active = bool(feed_attrs.get("music_active")) if feed_available else False
-        activity = logic.compute_activity(
-            bio=new_bio, presence_personal=presence_personal,
-            day_context=day_context, day_state=day_state,
-            homeoffice=homeoffice, private_active=private_active,
-            household_active=external_occupied,
-            media_activity=feed_state if feed_available else None,
-            pc_active=pc_active,
-        )
-        media_bucket = logic.media_bucket_from_feed(feed_state if feed_available else None)
-        activity_reason = _activity_reason(
-            activity,
-            media_bucket=media_bucket,
-            feed_reason=feed_attrs.get("reason") if feed_available else None,
-            private_active=private_active,
-        )
 
         # Presence-Effective Activity-Hold (PR3): starke lokale Aktivität hält
         # presence_effective bei rohem `abwesend` auf `home` (assumed) — ohne
@@ -879,11 +915,18 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
                 "household": external_occupied,
                 "homeoffice": homeoffice,
                 "activity_reason": activity_reason,
+                "activity_decision": activity_decision.as_attributes(),
                 # PR2 (FLEET-256): Media-Hälfte aus dem media_state-Feed.
-                "media_activity_context": feed_state if feed_available else None,
+                "media_activity_context": (
+                    feed_state
+                    if feed_state not in (None, "unknown", "unavailable", "")
+                    else None
+                ),
                 "media_activity_reason": feed_attrs.get("reason") if feed_available else None,
                 "media_activity_hold_strength": feed_attrs.get("hold_strength") if feed_available else None,
-                "media_activity_source": self._entity_id(CONF_MEDIA_ACTIVITY_CONTEXT),
+                "media_activity_source": feed_source,
+                "media_activity_feed_quality": feed_quality,
+                "media_activity_feed_freshness_s": DEFAULT_ACTIVITY_FEED_FRESHNESS_SECONDS,
                 "media_activity_context_available": feed_available,
                 "title": feed_attrs.get("title") if feed_available else None,
                 "artist": feed_attrs.get("artist") if feed_available else None,
@@ -914,7 +957,7 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
             media_activity_context=feed_state if feed_available else None,
             media_activity_reason=fa.get("reason"),
             media_activity_hold_strength=fa.get("hold_strength"),
-            media_activity_source=self._entity_id(CONF_MEDIA_ACTIVITY_CONTEXT),
+            media_activity_source=feed_source,
             title=fa.get("title"),
             artist=fa.get("artist"),
             game_title=fa.get("game_title"),
@@ -940,8 +983,8 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
             "activity_state": tuple(
                 source
                 for source in (
-                    "internal:coordinator.compute_activity",
-                    self._entity_id(CONF_MEDIA_ACTIVITY_CONTEXT),
+                    "internal:logic.compute_activity_decision",
+                    feed_source,
                 )
                 if source
             ),
@@ -1040,38 +1083,16 @@ def _state_is_true(value: Any) -> bool:
     return str(value).lower() in ("on", "true", "home", "1", "yes", "active")
 
 
-def _activity_reason(
-    activity: str,
-    *,
-    media_bucket: str | None,
-    feed_reason: str | None,
-    private_active: bool,
-) -> str:
-    """Diagnose-Begründung für den gewählten Activity-Bucket (nur Attribut).
-
-    Post-hoc aus dem Ergebnis abgeleitet — spiegelt die Prioritätsordnung von
-    ``compute_activity`` wider, entscheidet aber nichts. Media-Buckets stammen
-    aus dem media_state-Feed (``feed_reason`` reicht dessen Begründung durch);
-    private_time kann zusätzlich vom lokalen Manual-Flag kommen.
-    """
-    if activity in ("sleep", "waking", "idle"):
-        return f"bio:{activity}" if activity != "idle" else "idle"
-    if activity == "private_time":
-        # Feed-private vor lokalem Manual-Flag; wenn nur der Flag greift → flag.
-        if media_bucket == "private_time":
-            return f"private:feed:{feed_reason}" if feed_reason else "private:feed"
-        if private_active:
-            return "private:flag"
-        return "private:feed"
-    if activity in ("gaming", "entertainment", "music"):
-        return f"{activity}:feed:{feed_reason}" if feed_reason else f"{activity}:feed"
-    if activity == "work_home":
-        return "work_home:homeoffice"
-    if activity == "household":
-        return "household:source"
-    if activity == "pc_active":
-        return "pc_active:pc"
-    return activity
+def _activity_source_quality(value: str | None, entity_id: str | None) -> str:
+    """Classify a local activity input without turning missing into ``off``."""
+    if not entity_id or value in (None, ""):
+        return "unknown"
+    normalized = str(value).strip().lower()
+    if normalized == "unavailable":
+        return "unavailable"
+    if normalized == "unknown":
+        return "unknown"
+    return "fresh"
 
 
 def _bio_transition_reason(

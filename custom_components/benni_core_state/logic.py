@@ -14,11 +14,12 @@ from HA wiring lets us pin them down with a small test suite.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta
-from typing import Any
+from datetime import date, datetime, timedelta, timezone
+from typing import Any, Mapping
 
 from .const import (
     ACT_ENTERTAINMENT,
+    ACT_FREE_TIME,
     ACT_GAMING,
     ACT_HOUSEHOLD,
     ACT_IDLE,
@@ -29,6 +30,8 @@ from .const import (
     ACT_WAKING,
     ACT_WORK_AWAY,
     ACT_WORK_HOME,
+    ACTIVITY_DECISION_CONTRACT_VERSION,
+    ACTIVITY_PRECEDENCE,
     ACTIVITY_HOLD_STRENGTH,
     SOFT_HOLD_ACTIVITIES,
     BAND_FAR,
@@ -52,6 +55,7 @@ from .const import (
     DC_WERKTAG,
     DC_WOCHENENDE,
     DEFAULT_ARRIVING_STABILIZE_SECONDS,
+    DEFAULT_ACTIVITY_FEED_FRESHNESS_SECONDS,
     DEFAULT_LEAVING_STABILIZE_SECONDS,
     DEFAULT_PRESENCE_STALE_SECONDS,
     DEFAULT_PROXIMITY_TREND_EPSILON_M,
@@ -1247,19 +1251,374 @@ def compute_day_context(local_now: datetime, holiday: bool) -> str:
 
 
 # Media-Feed-States (benni_media_state activity_context) → Core-Media-Bucket.
-# 1:1; alles andere (idle/none/unknown/unavailable/leer) → KEIN Media-Bucket.
+# Current Media State publishes four active buckets plus idle.  ``free_time``
+# remains accepted as an explicit legacy feed value so an older producer cannot
+# silently become an unknown activity; unknown/unavailable values are never
+# mapped to it.
 _MEDIA_FEED_BUCKETS = frozenset(
-    {ACT_PRIVATE, ACT_GAMING, ACT_ENTERTAINMENT, ACT_MUSIC}
+    {ACT_PRIVATE, ACT_GAMING, ACT_ENTERTAINMENT, ACT_MUSIC, ACT_FREE_TIME}
 )
+_ACTIVITY_SOURCE_BIO = "internal:coordinator.bio_state"
+_ACTIVITY_SOURCE_PRESENCE = "internal:coordinator.presence_personal"
+_ACTIVITY_SOURCE_DAY_CONTEXT = "internal:coordinator.day_context"
+_ACTIVITY_SOURCE_PRIVATE = "configured:private_source"
+_ACTIVITY_SOURCE_HOMEOFFICE = "configured:homeoffice_ping"
+_ACTIVITY_SOURCE_HOUSEHOLD = "configured:household_source"
+_ACTIVITY_SOURCE_PC = "configured:pc_active"
+_ACTIVITY_SOURCE_MEDIA = "sensor.system_benni_media_state_activity_context"
+_ACTIVITY_SOURCE_FALLBACK = "internal:coordinator.activity_state.fallback"
+_ACTIVITY_QUALITY_ORDER = {
+    "fresh": 0,
+    "unknown": 1,
+    "unavailable": 2,
+    "stale": 3,
+    "degraded": 4,
+}
+
+
+@dataclass(frozen=True)
+class ActivityDecision:
+    """Auditable result of the Core-State activity arbitration.
+
+    The decision is deliberately independent of Home Assistant.  A coordinator
+    supplies the current timestamp, feed metadata and source status; tests can
+    therefore exercise the full precedence contract without a running HA.
+    """
+
+    winner: str
+    valid_candidates: tuple[str, ...]
+    suppressed_candidates: tuple[str, ...]
+    precedence_reason: str
+    input_sources: Mapping[str, tuple[str, ...]]
+    freshness: Mapping[str, Mapping[str, Any]]
+    quality_status: str
+    degraded_reason: str | None
+    fallback_reason: str | None
+    decision_timestamp: datetime
+
+    def as_attributes(self) -> dict[str, Any]:
+        """Return a Home-Assistant/Recorder-safe diagnostic projection."""
+        return {
+            "contract_version": ACTIVITY_DECISION_CONTRACT_VERSION,
+            "winner": self.winner,
+            "valid_candidates": list(self.valid_candidates),
+            "suppressed_candidates": list(self.suppressed_candidates),
+            "precedence_reason": self.precedence_reason,
+            "input_sources": {
+                candidate: list(sources)
+                for candidate, sources in self.input_sources.items()
+            },
+            "freshness": {
+                source: dict(status)
+                for source, status in self.freshness.items()
+            },
+            "quality_status": self.quality_status,
+            "degraded_reason": self.degraded_reason,
+            "fallback_reason": self.fallback_reason,
+            "decision_timestamp": self.decision_timestamp.isoformat(),
+        }
+
+
+def _normalized_quality(value: object) -> str | None:
+    if value is None:
+        return None
+    normalized = str(value).strip().lower()
+    if normalized in _ACTIVITY_QUALITY_ORDER:
+        return normalized
+    if normalized in {"ok", "good", "valid", "available", "ready"}:
+        return "fresh"
+    if normalized in {"expired", "old"}:
+        return "stale"
+    if normalized in {"offline"}:
+        return "unavailable"
+    if normalized in {"error", "invalid", "unreliable"}:
+        return "degraded"
+    if normalized in {"", "none", "missing"}:
+        return "unknown"
+    return "degraded"
+
+
+def _marker_is_true(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "on", "degraded"}
+
+
+def _age_seconds(updated_at: datetime | None, now: datetime) -> int | None:
+    if updated_at is None:
+        return None
+    comparable_updated = updated_at
+    comparable_now = now
+    if comparable_updated.tzinfo is None:
+        comparable_updated = comparable_updated.replace(tzinfo=timezone.utc)
+    if comparable_now.tzinfo is None:
+        comparable_now = comparable_now.replace(tzinfo=timezone.utc)
+    return max(0, int((comparable_now - comparable_updated).total_seconds()))
+
+
+def _freshness_entry(
+    *,
+    status: str,
+    updated_at: datetime | None,
+    now: datetime,
+    max_age_seconds: int | None = None,
+    reason: str | None = None,
+    quality: str | None = None,
+) -> dict[str, Any]:
+    return {
+        "status": status,
+        "updated_at": updated_at.isoformat() if updated_at is not None else None,
+        "age_seconds": _age_seconds(updated_at, now),
+        "max_age_seconds": max_age_seconds,
+        "quality": quality,
+        "reason": reason,
+    }
+
+
+def _media_feed_status(
+    *,
+    media_activity: str | None,
+    media_activity_quality: str | None,
+    media_activity_freshness: str | None,
+    media_activity_degraded: bool | str | None,
+    media_activity_last_changed: datetime | None,
+    decision_timestamp: datetime,
+    freshness_s: int,
+) -> tuple[str, str | None, dict[str, Any]]:
+    """Classify the Media-State feed before it can become a candidate."""
+    value = (media_activity or "").strip().lower()
+    if value in {"unavailable", "offline"}:
+        status = "unavailable"
+        reason = "media_feed_unavailable"
+    elif value in {"", "unknown", "none", "missing"}:
+        status = "unknown"
+        reason = "media_feed_unknown"
+    elif _marker_is_true(media_activity_degraded):
+        status = "degraded"
+        reason = "media_feed_degraded_marker"
+    else:
+        explicit_quality = _normalized_quality(media_activity_quality)
+        explicit_freshness = _normalized_quality(media_activity_freshness)
+        explicit_bad = next(
+            (
+                marker
+                for marker in (explicit_quality, explicit_freshness)
+                if marker in {"unknown", "unavailable", "stale", "degraded"}
+            ),
+            None,
+        )
+        if explicit_bad is not None:
+            status = explicit_bad
+            reason = f"media_feed_{explicit_bad}"
+        elif media_activity_last_changed is not None:
+            age = _age_seconds(media_activity_last_changed, decision_timestamp)
+            status = "stale" if age is not None and age > freshness_s else "fresh"
+            reason = "media_feed_age_exceeded" if status == "stale" else None
+        elif explicit_quality == "fresh" or explicit_freshness == "fresh":
+            status = "fresh"
+            reason = None
+        else:
+            status = "unknown"
+            reason = "media_feed_freshness_missing"
+
+    return status, reason, _freshness_entry(
+        status=status,
+        updated_at=media_activity_last_changed,
+        now=decision_timestamp,
+        max_age_seconds=freshness_s,
+        reason=reason,
+        quality=media_activity_quality or media_activity_freshness,
+    )
+
+
+def _source_is_fresh(
+    source: str,
+    source_status: Mapping[str, str | None],
+) -> bool:
+    return _normalized_quality(source_status.get(source, "fresh")) == "fresh"
+
+
+def compute_activity_decision(
+    *,
+    bio: str,
+    presence_personal: str,
+    day_context: str,
+    homeoffice: bool,
+    private_active: bool,
+    household_active: bool,
+    media_activity: str | None,
+    decision_timestamp: datetime,
+    pc_active: bool = False,
+    media_activity_quality: str | None = None,
+    media_activity_freshness: str | None = None,
+    media_activity_degraded: bool | str | None = None,
+    media_activity_last_changed: datetime | None = None,
+    media_activity_source: str = _ACTIVITY_SOURCE_MEDIA,
+    media_activity_freshness_s: int = DEFAULT_ACTIVITY_FEED_FRESHNESS_SECONDS,
+    source_status: Mapping[str, str | None] | None = None,
+) -> ActivityDecision:
+    """Return the complete canonical Activity-State decision contract.
+
+    ``day_state`` is deliberately absent: the existing public wrapper retains
+    that unused compatibility parameter, while the actual decision depends on
+    the stable day context only.  The Media-State value is an input feed, never
+    a Core-State result; only a fresh, available and non-degraded feed value can
+    contribute a Media candidate.
+    """
+    source_quality = dict(source_status or {})
+    feed_status, feed_reason, feed_freshness = _media_feed_status(
+        media_activity=media_activity,
+        media_activity_quality=media_activity_quality,
+        media_activity_freshness=media_activity_freshness,
+        media_activity_degraded=media_activity_degraded,
+        media_activity_last_changed=media_activity_last_changed,
+        decision_timestamp=decision_timestamp,
+        freshness_s=media_activity_freshness_s,
+    )
+    source_quality[media_activity_source] = feed_status
+
+    feed_bucket = (
+        media_bucket_from_feed(media_activity)
+        if feed_status == "fresh"
+        else None
+    )
+    candidates: dict[str, tuple[str, ...]] = {}
+
+    if bio == BIO_SLEEP:
+        candidates[ACT_SLEEP] = (_ACTIVITY_SOURCE_BIO,)
+    elif bio == BIO_WAKING:
+        candidates[ACT_WAKING] = (_ACTIVITY_SOURCE_BIO,)
+
+    # A sleep/waking Bio-State remains the highest-priority candidate, but all
+    # currently observable lower candidates are retained for transparent
+    # suppression diagnostics.  Other Bio values keep the historical safe
+    # behavior: only an explicitly awake state opens the lower activity layer.
+    lower_layer_open = bio in {BIO_AWAKE, BIO_SLEEP, BIO_WAKING}
+    if lower_layer_open:
+        private_sources: list[str] = []
+        if private_active:
+            private_sources.append(_ACTIVITY_SOURCE_PRIVATE)
+        if feed_bucket == ACT_PRIVATE:
+            private_sources.append(media_activity_source)
+        if private_sources:
+            deduplicated = tuple(dict.fromkeys(private_sources))
+            if all(_source_is_fresh(source, source_quality) for source in deduplicated):
+                candidates[ACT_PRIVATE] = deduplicated
+
+        if feed_bucket in {
+            ACT_GAMING,
+            ACT_ENTERTAINMENT,
+            ACT_MUSIC,
+            ACT_FREE_TIME,
+        }:
+            if _source_is_fresh(media_activity_source, source_quality):
+                candidates[feed_bucket] = (media_activity_source,)
+
+        work_sources = (
+            _ACTIVITY_SOURCE_HOMEOFFICE,
+            _ACTIVITY_SOURCE_PRESENCE,
+            _ACTIVITY_SOURCE_DAY_CONTEXT,
+        )
+        if (
+            homeoffice
+            and presence_personal == PERS_HOME
+            and day_context == DC_WERKTAG
+            and all(_source_is_fresh(source, source_quality) for source in work_sources)
+        ):
+            candidates[ACT_WORK_HOME] = work_sources
+
+        household_sources = (_ACTIVITY_SOURCE_HOUSEHOLD,)
+        if household_active and all(
+            _source_is_fresh(source, source_quality) for source in household_sources
+        ):
+            candidates[ACT_HOUSEHOLD] = household_sources
+
+        pc_sources = (_ACTIVITY_SOURCE_PC,)
+        if pc_active and all(
+            _source_is_fresh(source, source_quality) for source in pc_sources
+        ):
+            candidates[ACT_PC_ACTIVE] = pc_sources
+
+    # ``idle`` is the deterministic safe fallback and is always a valid
+    # candidate.  It is never inferred from a degraded feed value.
+    candidates[ACT_IDLE] = (_ACTIVITY_SOURCE_FALLBACK,)
+
+    ordered_candidates = tuple(
+        candidate for candidate in ACTIVITY_PRECEDENCE if candidate in candidates
+    )
+    winner = ordered_candidates[0]
+    suppressed = ordered_candidates[1:]
+
+    if winner == ACT_IDLE:
+        precedence_reason = "fallback: no valid higher-priority candidate"
+        fallback_reason = (
+            feed_reason or "no_valid_higher_priority_candidate"
+        )
+    elif suppressed:
+        precedence_reason = (
+            f"{winner} outranks {', '.join(suppressed)} by canonical precedence"
+        )
+        fallback_reason = None
+    else:
+        precedence_reason = f"{winner} is the only valid activity candidate"
+        fallback_reason = None
+
+    freshness: dict[str, Mapping[str, Any]] = {
+        media_activity_source: feed_freshness,
+    }
+    relevant_sources: list[str] = []
+    for sources in candidates.values():
+        for source in sources:
+            if source not in relevant_sources:
+                relevant_sources.append(source)
+    for source in source_quality:
+        if source not in relevant_sources:
+            relevant_sources.append(source)
+    for source in relevant_sources:
+        if source == media_activity_source:
+            continue
+        status = _normalized_quality(source_quality.get(source, "fresh")) or "unknown"
+        freshness[source] = _freshness_entry(
+            status=status,
+            updated_at=decision_timestamp if status == "fresh" else None,
+            now=decision_timestamp,
+            reason=None if status == "fresh" else f"source_{status}",
+        )
+
+    quality_status = max(
+        (str(item["status"]) for item in freshness.values()),
+        key=lambda status: _ACTIVITY_QUALITY_ORDER.get(status, 99),
+    )
+    quality_reasons = [
+        f"{source}:{item['status']}"
+        for source, item in freshness.items()
+        if item["status"] != "fresh"
+    ]
+    degraded_reason = ";".join(quality_reasons) if quality_reasons else None
+
+    return ActivityDecision(
+        winner=winner,
+        valid_candidates=ordered_candidates,
+        suppressed_candidates=suppressed,
+        precedence_reason=precedence_reason,
+        input_sources={candidate: candidates[candidate] for candidate in ordered_candidates},
+        freshness=freshness,
+        quality_status=quality_status,
+        degraded_reason=degraded_reason,
+        fallback_reason=fallback_reason,
+        decision_timestamp=decision_timestamp,
+    )
 
 
 def media_bucket_from_feed(media_activity: str | None) -> str | None:
     """Media-State-Feed-State → Core-Media-Bucket (oder ``None``).
 
     Reine Projektion des externen Feeds (``sensor.*_media_state_activity_context``)
-    auf die vier Media-Buckets. KEINE eigene Media-Detektion, KEIN Roh-Fallback:
+    auf die Media-Buckets. KEINE eigene Media-Detektion, KEIN Roh-Fallback:
     ``idle``/``none``/``unknown``/``unavailable``/fehlend → ``None`` (kein Bucket).
-    media_state ist Owner der Media-Wahrheit (FLEET-256).
+    ``free_time`` bleibt als expliziter Legacy-Feedwert kompatibel; der aktuelle
+    Media-State-Producer emittiert ihn nicht. media_state bleibt Owner der
+    Media-Wahrheit (FLEET-256).
     """
     v = (media_activity or "").strip().lower()
     return v if v in _MEDIA_FEED_BUCKETS else None
@@ -1277,64 +1636,26 @@ def compute_activity(
     media_activity: str | None = None,
     pc_active: bool = False,
 ) -> str:
-    """Pick the single dominant activity bucket (Activity v2 / PR2, FLEET-256).
+    """Compatibility wrapper returning only the canonical winner.
 
-    First match wins, in this order:
-
-        sleep > waking > private_time > gaming > entertainment > music
-              > work_home > household > pc_active > idle
-
-    Contract change vs v1: the Media half now comes from a SINGLE media_state
-    feed (``media_activity`` = ``private_time``/``gaming``/``entertainment``/
-    ``music``/``idle``) instead of Core re-reading raw HomePods/Denon/Stash
-    signals. media_state owns the Media truth; Core stays the global arbiter and
-    only maps the feed bucket into its full priority. A missing/``unknown``/
-    ``unavailable``/``idle`` feed yields no Media bucket — there is intentionally
-    NO raw fallback (that would reintroduce the double-detection). The former
-    residual ``free_time`` bucket is unreachable now (the feed is a closed enum)
-    and no longer produced.
-
-    ``private_active`` is a Core-local, non-Media manual private source
-    (``CONF_PRIVATE_SOURCE``) and is kept as an OR into ``private_time``.
-
-    ``work_home`` stays inert until a *real* homeoffice indicator is bound — PC
-    activity alone is ``pc_active``, never faked into ``work_home``. Presence /
-    transition (away / bei_eltern / coming_home) are intentionally NOT activity
-    values; they live in Presence and, later, in ``live_status``.
+    Direct pure callers historically supplied a validated feed state without a
+    HA timestamp.  Such calls retain that behavior; the coordinator uses
+    ``compute_activity_decision`` with the real feed timestamp and quality.
     """
-    if bio == BIO_SLEEP:
-        return ACT_SLEEP
-    if bio == BIO_WAKING:
-        return ACT_WAKING
-
-    if bio != BIO_AWAKE:
-        return ACT_IDLE
-
-    media_bucket = media_bucket_from_feed(media_activity)
-
-    # 4) private_time — höchste awake-Priorität (Feed ODER lokaler Manual-Flag).
-    if private_active or media_bucket == ACT_PRIVATE:
-        return ACT_PRIVATE
-    # 5) gaming — Screen-Spiel schlägt passives TV/Streaming/Audio (aus Feed).
-    if media_bucket == ACT_GAMING:
-        return ACT_GAMING
-    # 6) entertainment — TV/Streaming aus dem Feed.
-    if media_bucket == ACT_ENTERTAINMENT:
-        return ACT_ENTERTAINMENT
-    # 7) music — reines Audio, im Feed als music (media_context bleibt idle).
-    if media_bucket == ACT_MUSIC:
-        return ACT_MUSIC
-    # 8) work_home — nur mit echtem Indikator, werktags, zuhause.
-    if homeoffice and presence_personal == PERS_HOME and day_context == DC_WERKTAG:
-        return ACT_WORK_HOME
-    # 9) household.
-    if household_active:
-        return ACT_HOUSEHOLD
-    # 10) pc_active — PC an (lokaler Anker), aber kein stärkerer Kontext.
-    if pc_active:
-        return ACT_PC_ACTIVE
-
-    return ACT_IDLE
+    feed_is_known = media_bucket_from_feed(media_activity) is not None
+    decision = compute_activity_decision(
+        bio=bio,
+        presence_personal=presence_personal,
+        day_context=day_context,
+        homeoffice=homeoffice,
+        private_active=private_active,
+        household_active=household_active,
+        media_activity=media_activity,
+        decision_timestamp=datetime.now(timezone.utc),
+        pc_active=pc_active,
+        media_activity_quality="fresh" if feed_is_known else None,
+    )
+    return decision.winner
 
 
 # --------------------------------------------------------- effective presence

@@ -2,9 +2,10 @@
 
 This module is deliberately pure Python.  It records the mapping decision for
 the owner-local Core-State contract without changing consumers. The Phase-1
-provisional-sleep contract from #27 and the restart-safe waking lifecycle from
-#28 are implemented here. The #26 Wake Shadow consumes this
-declarative mapping but keeps its comparison diagnostics in wake_planning.py.
+provisional-sleep contract from #27, the restart-safe waking lifecycle from
+#28, and the owner-local activity decision contract from #29 are implemented
+here. The #26 Wake Shadow consumes this declarative mapping but keeps its
+comparison diagnostics in wake_planning.py.
 """
 
 from __future__ import annotations
@@ -22,7 +23,7 @@ from .const import (
 )
 
 
-MAPPING_CONTRACT_VERSION: Final[str] = "1.4.0"
+MAPPING_CONTRACT_VERSION: Final[str] = "1.5.0"
 DEFAULT_CANONICAL_PROFILE: Final[str] = "benni"
 _COMPACT_DIAGNOSTIC_KEYS: Final[tuple[str, ...]] = (
     "mapping_key",
@@ -352,11 +353,35 @@ CANONICAL_MAPPINGS: Final[tuple[EntityMapping, ...]] = (
         contract_fact="aggregierter Activity-State",
         domain="sensor",
         allowed_states=tuple(ACTIVITY_STATES),
-        attributes=("activity_reason", "media_activity_context", "media_activity_source", "pc_active"),
-        current_source=("internal:coordinator.compute_activity", "sensor.system_benni_media_state_activity_context"),
+        attributes=(
+            "activity_reason",
+            "activity_decision",
+            "media_activity_context",
+            "media_activity_source",
+            "media_activity_feed_quality",
+            "pc_active",
+        ),
+        current_source=(
+            "internal:logic.compute_activity_decision",
+            "sensor.system_benni_media_state_activity_context",
+        ),
         legacy_references=("sensor.benni_combined_context_activity_state",),
-        reason="Core State bleibt L1-Owner der abgeleiteten Activity; Media State liefert nur den neutralen Feed und keine Core-State-Fusion.",
+        reason="Core State ist der L1-Owner der kanonischen Entscheidung; Media State liefert ausschließlich einen qualitätsgeprüften neutralen Feed. Die Entscheidung enthält Gewinner, Kandidaten, Quellen, Freshness, Qualität, Fallback und Zeitpunkt.",
         consumer_issue="https://github.com/Levtos/benni-core-state/issues/29",
+        target_attributes=(
+            "activity_decision",
+            "activity_decision.contract_version",
+            "activity_decision.winner",
+            "activity_decision.valid_candidates",
+            "activity_decision.suppressed_candidates",
+            "activity_decision.precedence_reason",
+            "activity_decision.input_sources",
+            "activity_decision.freshness",
+            "activity_decision.quality_status",
+            "activity_decision.degraded_reason",
+            "activity_decision.fallback_reason",
+            "activity_decision.decision_timestamp",
+        ),
     ),
     _current(
         mapping_key="master_context",
