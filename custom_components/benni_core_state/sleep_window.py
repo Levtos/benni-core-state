@@ -139,8 +139,8 @@ def plan_sleep_window(
     )
     wake_due = _instant(now) >= _instant(actual_wake)
 
-    status = "degraded" if wake_source_status == "degraded" else wake_source_status
-    if status not in {"available", "degraded"}:
+    status = wake_source_status or "degraded"
+    if status not in {"available", "degraded", "stale", "unavailable", "invalid"}:
         status = "degraded"
     quality = wake_source_quality or "fresh"
     if minimum_unmet:
