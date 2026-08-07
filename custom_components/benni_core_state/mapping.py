@@ -2,8 +2,8 @@
 
 This module is deliberately pure Python.  It records the mapping decision for
 the owner-local Core-State contract without changing consumers. The Phase-1
-provisional-sleep contract from #27 is implemented; the full waking lifecycle
-remains gated by #28. The #26 Wake Shadow consumes this
+provisional-sleep contract from #27 and the restart-safe waking lifecycle from
+#28 are implemented here. The #26 Wake Shadow consumes this
 declarative mapping but keeps its comparison diagnostics in wake_planning.py.
 """
 
@@ -22,7 +22,7 @@ from .const import (
 )
 
 
-MAPPING_CONTRACT_VERSION: Final[str] = "1.2.0"
+MAPPING_CONTRACT_VERSION: Final[str] = "1.4.0"
 DEFAULT_CANONICAL_PROFILE: Final[str] = "benni"
 _COMPACT_DIAGNOSTIC_KEYS: Final[tuple[str, ...]] = (
     "mapping_key",
@@ -246,7 +246,9 @@ CANONICAL_MAPPINGS: Final[tuple[EntityMapping, ...]] = (
             "last_sleep_start",
             "last_provisional_sleep_start",
             "last_awake_start",
+            "last_waking_start",
             "sleep_window",
+            "wake_interaction",
             "indicator_*",
         ),
         current_source=(
@@ -293,19 +295,25 @@ CANONICAL_MAPPINGS: Final[tuple[EntityMapping, ...]] = (
         domain="sensor",
         unique_id_template=_uid_template("bio_state"),
         allowed_states=tuple(BIO_STATES),
-        attributes=("last_awake_start", "wake_needed", "wake_next"),
-        owner="benni-core-state (L1; Lifecycle #28)",
+        attributes=(
+            "last_waking_start",
+            "waking_timeout_minutes",
+            "waking_timeout_at",
+            "reason",
+            "wake_interaction",
+        ),
+        owner="benni-core-state (L1)",
         current_source=("internal:coordinator.compute_bio_state",),
         legacy_references=(),
-        legacy_resolution=LEGACY_OPEN_GATE,
+        legacy_resolution=LEGACY_CANONICAL,
         status=STATUS_ATTRIBUTE_ONLY,
-        reason="waking ist kein neuer separater Output und wird nicht als Wake-Planner-Funktion behauptet; Consumers lesen den Bio-State.",
-        planned_cutover="Kein eigener Rebind; spätere Lifecycle-/Consumer-Gates verwenden sensor.*_core_state_bio_state.",
+        reason="#28 vervollständigt waking im bestehenden Bio-State: erstes reguläres Wachsignal oder 30-Minuten-Timeout beendet den Zustand.",
+        planned_cutover="Kein eigener Rebind; spätere Consumer-Gates verwenden sensor.*_core_state_bio_state.",
         rollback="Aktuellen Bio-State weiterliefern; kein separater waking-Sensor wird registriert.",
         consumer_issue="https://github.com/Levtos/benni-core-state/issues/28",
         entity_id_pattern="sensor.{profile}_core_state_bio_state",
         entity_suffix="bio_state",
-        target_attributes=("bio_state",),
+        target_attributes=("bio_state", "wake_interaction"),
     ),
     EntityMapping(
         mapping_key="day_state",

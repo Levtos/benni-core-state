@@ -51,6 +51,8 @@ async def _apply_bio(hass: HomeAssistant, target: str) -> None:
         coord._persistent.bio_state = target
         if target == BIO_SLEEP:
             coord._persistent.last_sleep_start = now_iso
+        elif target == BIO_WAKING:
+            coord._persistent.last_waking_start = now_iso
         elif target == BIO_AWAKE:
             coord._persistent.last_awake_start = now_iso
         await coord.async_request_refresh()

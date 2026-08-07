@@ -20,6 +20,7 @@ class PersistentState:
     last_sleep_start: str | None = None
     last_awake_start: str | None = None
     last_provisional_sleep_start: str | None = None
+    last_waking_start: str | None = None
     minimum_sleep_minutes: int | None = None
     provisional_lead_minutes: int | None = None
     transition_state: str = "none"

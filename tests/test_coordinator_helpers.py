@@ -16,7 +16,9 @@ from __future__ import annotations
 
 import sys
 import types
-from datetime import datetime
+from datetime import datetime, timezone
+
+from custom_components.benni_core_state.const import BIO_PROVISIONAL_SLEEP, BIO_WAKING
 
 
 def _seed_ha_runtime_stubs() -> None:
@@ -91,7 +93,10 @@ def _seed_ha_runtime_stubs() -> None:
 
 _seed_ha_runtime_stubs()
 
-from custom_components.benni_core_state.coordinator import _parse_iso  # noqa: E402
+from custom_components.benni_core_state.coordinator import (  # noqa: E402
+    _parse_iso,
+    _wake_interaction_reference_start,
+)
 
 
 def test_none_returns_none():
@@ -123,3 +128,19 @@ def test_roundtrip_preserves_instant():
     original = datetime(2026, 7, 6, 19, 20, 8, 605347)
     parsed = _parse_iso(original.isoformat())
     assert parsed == original
+
+
+def test_wake_reference_uses_current_provisional_edge():
+    old_sleep = datetime(2026, 7, 6, 1, 0, tzinfo=timezone.utc)
+    provisional = datetime(2026, 7, 6, 6, 0, tzinfo=timezone.utc)
+
+    assert _wake_interaction_reference_start(
+        BIO_PROVISIONAL_SLEEP,
+        sleep_start=old_sleep,
+        provisional_start=provisional,
+    ) == provisional
+    assert _wake_interaction_reference_start(
+        BIO_WAKING,
+        sleep_start=old_sleep,
+        provisional_start=provisional,
+    ) == provisional

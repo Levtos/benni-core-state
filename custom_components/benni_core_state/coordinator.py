@@ -32,8 +32,10 @@ from homeassistant.util import dt as dt_util
 from . import logic
 from .const import (
     ACTIVITY_HOLD_STRENGTH,
+    BIO_AWAKE,
     BIO_PROVISIONAL_SLEEP,
     BIO_SLEEP,
+    BIO_WAKING,
     CONF_COFFEE_ACTIVE,
     CONF_DOOR_WAKE,
     CONF_ENTERTAINMENT_ACTIVE,
@@ -83,7 +85,9 @@ from .const import (
     DEFAULT_TRANSITION_HOLD,
     DEFAULT_WAKE_FLOOR,
     DEFAULT_WAKE_WINDOW_MINUTES,
+    DEFAULT_WAKING_TIMEOUT_MINUTES,
     DOMAIN,
+    PERS_AWAY,
     PERS_PARENTS,
     PROFILE_PREFILL,
     PROFILE_SSIDS,
@@ -657,6 +661,30 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
         )
 
         previous_bio = self._persistent.bio_state
+        waking_started = (
+            _parse_iso(self._persistent.last_waking_start)
+            if previous_bio == BIO_WAKING
+            else None
+        )
+        waking_start_recovered = previous_bio == BIO_WAKING and waking_started is None
+        if waking_start_recovered:
+            waking_started = now
+            self._persistent.last_waking_start = now.isoformat()
+
+        interaction_reference_start = _wake_interaction_reference_start(
+            previous_bio,
+            sleep_start=_parse_iso(self._persistent.last_sleep_start),
+            provisional_start=_parse_iso(
+                self._persistent.last_provisional_sleep_start
+            ),
+        )
+        interaction_decision = logic.regular_wake_interaction_decision(
+            indicators=wake_indicators,
+            day_state=day_state,
+            indicator_active_since=wake_indicator_active_since,
+            sleep_started=interaction_reference_start,
+        )
+        regular_interaction = interaction_decision.accepted
         new_bio, sleep_start, awake_start = logic.compute_bio_state(
             prev_state=previous_bio,
             wake_needed=wake_needed,
@@ -669,7 +697,13 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
             indicator_active_since=wake_indicator_active_since,
             provisional_active=sleep_plan.provisional_active,
             wake_due=sleep_plan.wake_due if sleep_plan.available else None,
+            waking_started=waking_started,
+            waking_timeout_minutes=DEFAULT_WAKING_TIMEOUT_MINUTES,
+            interaction_reference_start=interaction_reference_start,
         )
+        if new_bio == BIO_WAKING and previous_bio != BIO_WAKING:
+            waking_started = now
+            self._persistent.last_waking_start = now.isoformat()
         if (
             new_bio == BIO_PROVISIONAL_SLEEP
             and previous_bio != BIO_PROVISIONAL_SLEEP
@@ -681,6 +715,14 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
         )
         self._persistent.last_awake_start = (
             awake_start.isoformat() if awake_start else None
+        )
+        bio_reason = _bio_transition_reason(
+            previous=previous_bio,
+            current=new_bio,
+            presence_personal=presence_personal,
+            sleep_reason=sleep_plan.reason,
+            recovered_start=waking_start_recovered,
+            regular_interaction=regular_interaction,
         )
 
         media_ctx, _, _ = self._read_entity(CONF_MEDIA_CONTEXT)
@@ -787,6 +829,17 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
                 "last_provisional_sleep_start": (
                     self._persistent.last_provisional_sleep_start
                 ),
+                "last_waking_start": self._persistent.last_waking_start,
+                "waking_timeout_minutes": DEFAULT_WAKING_TIMEOUT_MINUTES,
+                "waking_timeout_at": (
+                    (
+                        waking_started
+                        + timedelta(minutes=DEFAULT_WAKING_TIMEOUT_MINUTES)
+                    ).isoformat()
+                    if waking_started is not None
+                    else None
+                ),
+                "reason": bio_reason,
                 "wake_needed": (
                     sleep_plan.wake_due if sleep_plan.available else wake_needed
                 ),
@@ -797,6 +850,7 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
                 ),
                 "wake_next": wake_next_raw,
                 "sleep_window": sleep_plan.as_attributes(),
+                "wake_interaction": interaction_decision.as_attributes(),
                 **{f"indicator_{k}": v for k, v in wake_indicators.items()},
                 **{
                     f"indicator_{k}_active_since": (
@@ -806,8 +860,9 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
                 },
             },
             "day_state": day_phase_diagnostics,
-            # #26 Shadow-only outputs.  These are additive read-only
-            # projections; the old wake inputs above continue to drive Bio.
+            # #26 Shadow-only outputs. These are additive read-only projections;
+            # the internal sleep-window result drives Bio when it is available,
+            # with the old wake inputs retained only as an explicit fallback.
             "wake_state": wake_attrs,
             "next_wake": wake_attrs,
             "wake_needed": wake_attrs,
@@ -1019,6 +1074,40 @@ def _activity_reason(
     return activity
 
 
+def _bio_transition_reason(
+    *,
+    previous: str,
+    current: str,
+    presence_personal: str,
+    sleep_reason: str,
+    recovered_start: bool,
+    regular_interaction: bool,
+) -> str:
+    if recovered_start and current == BIO_WAKING:
+        return "waking_start_recovered_after_restart"
+    if current == BIO_WAKING and previous != BIO_WAKING:
+        return (
+            "hard_l_wake_start"
+            if sleep_reason == "hard_l_minimum_sleep_unmet"
+            else "calculated_wake_start"
+        )
+    if current == BIO_AWAKE and previous == BIO_WAKING:
+        if presence_personal == PERS_AWAY:
+            return "presence_departure"
+        if regular_interaction:
+            return "regular_wake_interaction"
+        return "waking_timeout"
+    if current == BIO_AWAKE and previous in {BIO_SLEEP, BIO_PROVISIONAL_SLEEP}:
+        return (
+            "presence_departure"
+            if presence_personal == PERS_AWAY
+            else "regular_wake_interaction"
+        )
+    if current == BIO_PROVISIONAL_SLEEP:
+        return sleep_reason
+    return f"steady:{current}"
+
+
 def _scheduled_wake_for_sleep(
     plan: wake_planning.WakePlan, local_now: datetime
 ) -> datetime | None:
@@ -1057,6 +1146,28 @@ def _float_or_none(raw: Any) -> float | None:
 def _latest_datetime(*values: datetime | None) -> datetime | None:
     present = [value for value in values if value is not None]
     return max(present) if present else None
+
+
+def _wake_interaction_reference_start(
+    previous_bio: str,
+    *,
+    sleep_start: datetime | None,
+    provisional_start: datetime | None,
+) -> datetime | None:
+    """Select the lifecycle edge that regular signals must follow.
+
+    Confirmed sleep and provisional sleep each use their own current start. A
+    waking phase may have either origin, so the newest persisted edge is the
+    only safe reference. Other Bio states do not accept a stale historical edge.
+    """
+
+    if previous_bio == BIO_SLEEP:
+        return sleep_start
+    if previous_bio == BIO_PROVISIONAL_SLEEP:
+        return provisional_start
+    if previous_bio == BIO_WAKING:
+        return _latest_datetime(sleep_start, provisional_start)
+    return None
 
 
 # ----------------------------------------------------------------- lookups
