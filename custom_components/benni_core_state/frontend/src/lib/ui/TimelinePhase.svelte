@@ -3,14 +3,15 @@
 <script lang="ts">
   import { Tooltip } from "bits-ui";
   import type { TimelinePhase } from "../contracts";
-  import { formatTime } from "../contracts";
+  import { displayPhase, formatTime } from "../contracts";
 
   interface Props {
     phase: TimelinePhase;
   }
 
   let { phase }: Props = $props();
-  const description = $derived(`${phase.label}: ${formatTime(phase.start)}–${formatTime(phase.end)}`);
+  const phaseLabel = $derived(displayPhase(phase.id));
+  const description = $derived(`${phaseLabel}: ${formatTime(phase.start)}–${formatTime(phase.end)}`);
 </script>
 
 <Tooltip.Provider>
@@ -21,7 +22,7 @@
       style={`flex-grow: ${phase.width_pct};`}
       aria-label={description}
     >
-      <span class="timeline-phase-label">{phase.label}</span>
+      <span class="timeline-phase-label">{phaseLabel}</span>
       <span class="timeline-phase-time">{formatTime(phase.start)}</span>
     </Tooltip.Trigger>
     <Tooltip.Content class="tooltip" side="top">{description}</Tooltip.Content>

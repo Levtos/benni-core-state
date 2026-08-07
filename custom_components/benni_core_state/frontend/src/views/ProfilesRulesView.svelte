@@ -1,9 +1,14 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { Clock3, ListChecks, Save, Trash2 } from "@lucide/svelte";
+  import { ListChecks, Save, Trash2 } from "@lucide/svelte";
   import type { AutomaticRule, Snapshot } from "../lib/contracts";
-  import { displayMetric } from "../lib/contracts";
+  import {
+    displayProfile,
+    displayRuleName,
+    formatClock,
+    formatDuration,
+  } from "../lib/contracts";
 
   interface Props {
     snapshot: Snapshot | null;
@@ -11,12 +16,17 @@
     onCommand: (command: string, payload?: Record<string, unknown>) => Promise<void>;
   }
 
+  const profileIds = ["weekday", "weekend"] as const;
+  const weekdayLabels = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"];
+
   let { snapshot, pendingCommand, onCommand }: Props = $props();
   let selectedProfile = $state<"weekday" | "weekend">("weekday");
+  let loadedProfileId = $state<"weekday" | "weekend" | null>(null);
   let wakeTime = $state("07:00");
   let wakeWindow = $state(5);
   let minimumSleep = $state("");
   let provisionalLead = $state("");
+  let validationError = $state<string | null>(null);
   let ruleId = $state("");
   let ruleName = $state("");
   let ruleTime = $state("07:00");
@@ -34,30 +44,54 @@
     wakeWindow = profile.wake_window_minutes;
     minimumSleep = profile.minimum_sleep_minutes === null ? "" : String(profile.minimum_sleep_minutes);
     provisionalLead = profile.provisional_lead_minutes === null ? "" : String(profile.provisional_lead_minutes);
+    loadedProfileId = id;
+    validationError = null;
   }
 
   $effect(() => {
-    if (snapshot?.config.profiles.weekday) loadProfile(selectedProfile);
+    if (snapshot?.config.profiles[selectedProfile] && loadedProfileId !== selectedProfile) {
+      loadProfile(selectedProfile);
+    }
   });
 
-  function nullableNumber(value: string): number | null {
+  function nullablePositiveNumber(value: string, label: string): number | null {
     const trimmed = value.trim();
     if (!trimmed) return null;
     const parsed = Number(trimmed);
-    return Number.isFinite(parsed) ? parsed : null;
+    if (!Number.isInteger(parsed) || parsed < 1 || parsed > 1440) {
+      throw new Error(`${label} muss eine ganze Zahl zwischen 1 und 1440 Minuten sein.`);
+    }
+    return parsed;
+  }
+
+  function validateProfile(): string | null {
+    if (!/^\d{2}:\d{2}$/.test(wakeTime)) return "Die Weckzeit muss im Format HH:MM angegeben werden.";
+    if (!Number.isInteger(Number(wakeWindow)) || Number(wakeWindow) < 0 || Number(wakeWindow) > 120) {
+      return "Das Weckfenster muss eine ganze Zahl zwischen 0 und 120 Minuten sein.";
+    }
+    try {
+      nullablePositiveNumber(minimumSleep, "Die Mindestschlafdauer");
+      nullablePositiveNumber(provisionalLead, "Der Schutzvorlauf");
+    } catch (error) {
+      return error instanceof Error ? error.message : "Die Profilwerte sind ungültig.";
+    }
+    return null;
   }
 
   async function saveProfile(event: SubmitEvent): Promise<void> {
     event.preventDefault();
+    validationError = validateProfile();
+    if (validationError) return;
     await onCommand("wake.profile.update", {
       profile_id: selectedProfile,
       values: {
         wake_time: wakeTime,
         wake_window_minutes: Number(wakeWindow),
-        minimum_sleep_minutes: nullableNumber(minimumSleep),
-        provisional_lead_minutes: nullableNumber(provisionalLead),
+        minimum_sleep_minutes: nullablePositiveNumber(minimumSleep, "Die Mindestschlafdauer"),
+        provisional_lead_minutes: nullablePositiveNumber(provisionalLead, "Der Schutzvorlauf"),
       },
     });
+    loadedProfileId = null;
   }
 
   function editRule(rule: AutomaticRule): void {
@@ -69,6 +103,14 @@
     ruleAction = rule.action;
     ruleDateFrom = rule.date_from ?? "";
     ruleDateTo = rule.date_to ?? "";
+  }
+
+  function validityLabel(rule: AutomaticRule): string {
+    if (rule.weekdays?.length) {
+      return rule.weekdays.map((day) => weekdayLabels[day] ?? "Unbekannter Wochentag").join(", ");
+    }
+    if (rule.date_from || rule.date_to) return "Datumsbereich";
+    return "Automatische Core-State-Auswahl";
   }
 
   async function saveRule(event: SubmitEvent): Promise<void> {
@@ -95,62 +137,76 @@
 <div class="view-heading">
   <div>
     <p class="section-kicker">Profile & Regeln</p>
-    <h2>Automatische Wake-Planung</h2>
-    <p class="muted">Genau zwei wirksame Profile. Feiertag und Urlaub wählen automatisch das Wochenendprofil.</p>
+    <h2>Schlaf- und Weckprofil-Matrix</h2>
+    <p class="muted">Genau zwei wirksame Profile. Feiertag und Urlaub wählen automatisch das Wochenendprofil; sie sind keine zusätzlichen Wertprofile.</p>
   </div>
 </div>
 
 {#if snapshot?.config}
-  <section class="profile-grid" aria-label="Wirksame Wake-Profile">
-    {#each Object.values(snapshot.config.profiles) as profile (profile.id)}
-      <button
-        class="form-card"
-        class:active={selectedProfile === profile.id}
-        type="button"
-        onclick={() => loadProfile(profile.id)}
-        aria-pressed={selectedProfile === profile.id}
-      >
-        <span class="section-kicker">{profile.id === "weekday" ? "Werktagsprofil" : "Wochenendprofil"}</span>
-        <h3>{profile.label}</h3>
-        <div class="inline-meta">
-          <span class="chip cyan"><Clock3 size={14} /> {profile.wake_time}</span>
-          <span class="chip">Fenster ±{profile.wake_window_minutes} min</span>
-        </div>
-        <p class="helper">M {displayMetric(profile.minimum_sleep_minutes, " min")} · A {displayMetric(profile.provisional_lead_minutes, " min")}</p>
-      </button>
-    {/each}
+  <section class="profile-matrix" aria-labelledby="profile-matrix-heading">
+    <div class="section-header">
+      <div>
+        <p class="section-kicker">Wirksame Profile</p>
+        <h3 id="profile-matrix-heading">Werktag und Wochenende</h3>
+      </div>
+      <span class="chip purple">Automatische Auswahl durch Core State</span>
+    </div>
+    <div class="profile-grid">
+      {#each profileIds as profileId (profileId)}
+        {@const profile = snapshot.config.profiles[profileId]}
+        <button
+          class="profile-card"
+          class:active={selectedProfile === profile.id}
+          type="button"
+          onclick={() => loadProfile(profile.id)}
+          aria-pressed={selectedProfile === profile.id}
+        >
+          <span class="section-kicker">{displayProfile(profile.id)}</span>
+          <h3>{displayProfile(profile.id)}</h3>
+          <dl class="profile-matrix-list">
+            <div><dt>E · Frühester möglicher Weckbeginn</dt><dd>{formatClock(profile.wake_time)}</dd></div>
+            <div><dt>L · Spätester Weckbeginn – harte Grenze</dt><dd>Backend-Fenster ±{profile.wake_window_minutes} Min.</dd></div>
+            <div><dt>M · Gewünschte Mindestschlafdauer</dt><dd>{formatDuration(profile.minimum_sleep_minutes)}</dd></div>
+            <div><dt>A · Schutzvorlauf für vorsorglichen Schlaf</dt><dd>{formatDuration(profile.provisional_lead_minutes)}</dd></div>
+          </dl>
+          <p class="helper">Herkunft: persistente Core-State-Profilkonfiguration; E und L werden im Tagesstatus mit den aktuellen Backend-Grenzen ausgewiesen.</p>
+        </button>
+      {/each}
+    </div>
   </section>
 
   <section class="form-card" style="margin-top: 14px;" aria-labelledby="profile-edit-heading">
     <div class="card-header">
       <div>
-        <p class="section-kicker">Core-State-Command</p>
-        <h3 id="profile-edit-heading">{snapshot.config.profiles[selectedProfile].label} bearbeiten</h3>
+        <p class="section-kicker">Autorisierte Core-State-Änderung</p>
+        <h3 id="profile-edit-heading">{displayProfile(selectedProfile)} bearbeiten</h3>
       </div>
       <span class="chip purple">Keine manuelle Profilumschaltung</span>
     </div>
+    {#if validationError}<div class="validation-error" role="alert">{validationError}</div>{/if}
     <form class="form-grid" onsubmit={saveProfile}>
       <label class="field">
-        <span class="field-label">Wake-Zeit</span>
-        <input type="time" bind:value={wakeTime} required />
+        <span class="field-label">Weckbeginn / Backend-Zielzeit (E/L-Fenster)</span>
+        <input type="time" bind:value={wakeTime} required aria-invalid={validationError ? "true" : undefined} />
       </label>
       <label class="field">
-        <span class="field-label">Wake Window (Minuten)</span>
-        <input type="number" min="0" max="120" bind:value={wakeWindow} required />
+        <span class="field-label">Weckfenster zwischen E und L (Minuten)</span>
+        <input type="number" min="0" max="120" bind:value={wakeWindow} required aria-invalid={validationError ? "true" : undefined} />
       </label>
       <label class="field">
-        <span class="field-label">M · Mindestschlaf</span>
-        <input type="number" min="1" max="1440" bind:value={minimumSleep} placeholder="nicht belegt" />
-        <small>Leer bleibt backendseitig fehlend und wird nicht geraten.</small>
+        <span class="field-label">M · Gewünschte Mindestschlafdauer (Minuten)</span>
+        <input type="number" min="1" max="1440" bind:value={minimumSleep} placeholder="Nicht konfiguriert" aria-invalid={validationError ? "true" : undefined} />
+        <small>Leer bleibt backendseitig nicht konfiguriert und wird nicht geraten.</small>
       </label>
       <label class="field">
-        <span class="field-label">A · Schutzvorlauf</span>
-        <input type="number" min="1" max="1440" bind:value={provisionalLead} placeholder="nicht belegt" />
+        <span class="field-label">A · Schutzvorlauf für vorsorglichen Schlaf (Minuten)</span>
+        <input type="number" min="1" max="1440" bind:value={provisionalLead} placeholder="Nicht konfiguriert" aria-invalid={validationError ? "true" : undefined} />
       </label>
       <div class="field full action-row">
         <button class="button" type="submit" disabled={pendingCommand !== null || !snapshot.capabilities.edit_profiles}>
-          <Save size={16} /> Profil speichern
+          <Save size={16} /> Profil speichern und synchronisieren
         </button>
+        <span class="helper">Warten, Erfolg, Fehler und anschließender Re-Sync kommen von Core State.</span>
       </div>
     </form>
   </section>
@@ -158,8 +214,8 @@
   <section class="table-card" style="margin-top: 14px;" aria-labelledby="rules-heading">
     <div class="section-header">
       <div>
-        <p class="section-kicker">Regelgewinner</p>
-        <h3 id="rules-heading">Automatische Regelarten</h3>
+        <p class="section-kicker">Automatische Regelarten</p>
+        <h3 id="rules-heading">Regelgewinner und Gültigkeit</h3>
       </div>
       <ListChecks size={19} color="var(--cyan)" />
     </div>
@@ -171,10 +227,10 @@
         <tbody>
           {#each (snapshot.config.effective_rules ?? snapshot.config.rules) as rule (rule.id)}
             <tr>
-              <td><strong>{rule.name}</strong><br /><span class="helper">{rule.id}</span></td>
+              <td><strong>{displayRuleName(rule.name, rule.id)}</strong></td>
               <td>{rule.priority}</td>
-              <td>{rule.weekdays?.length ? `Wochentage: ${rule.weekdays.join(", ")}` : "Datums-/Zyklusregel"}</td>
-              <td>{rule.action === "skip" ? "Ohne Wake" : `Wake ${rule.wake_time ?? "—"}`}</td>
+              <td>{validityLabel(rule)}</td>
+              <td>{rule.action === "skip" ? "Kein Weckvorgang" : `Wecken um ${formatClock(rule.wake_time)}`}</td>
               <td>
                 {#if !rule.id.startsWith("profile_")}
                   <div class="action-row">
@@ -198,19 +254,19 @@
     <div class="card-header">
       <div>
         <p class="section-kicker">Automatische Regel bearbeiten</p>
-        <h3 id="rule-edit-heading">Wochentage, Daten oder Zyklen</h3>
+        <h3 id="rule-edit-heading">Wochentage oder Datumsbereiche</h3>
       </div>
-      <span class="helper">Nur Core-State-Regeln, kein Skip-/Zeit-Override.</span>
+      <span class="helper">Nur Core-State-Regeln, kein manueller Skip-, Zeit- oder Profil-Override.</span>
     </div>
     <form class="form-grid" onsubmit={saveRule}>
-      <label class="field"><span class="field-label">ID</span><input bind:value={ruleId} required placeholder="z. B. school_cycle" /></label>
-      <label class="field"><span class="field-label">Name</span><input bind:value={ruleName} placeholder="Verständlicher Name" /></label>
-      <label class="field"><span class="field-label">Aktion</span><select bind:value={ruleAction}><option value="wake">Wake</option><option value="skip">Ohne Wake</option></select></label>
-      <label class="field"><span class="field-label">Wake-Zeit</span><input type="time" bind:value={ruleTime} disabled={ruleAction === "skip"} /></label>
+      <label class="field"><span class="field-label">Technischer Regelcode</span><input bind:value={ruleId} required placeholder="z. B. school_cycle" /></label>
+      <label class="field"><span class="field-label">Verständlicher Regelname</span><input bind:value={ruleName} placeholder="z. B. Schulwoche" /></label>
+      <label class="field"><span class="field-label">Aktion</span><select bind:value={ruleAction}><option value="wake">Wecken</option><option value="skip">Kein Weckvorgang</option></select></label>
+      <label class="field"><span class="field-label">Weckzeit</span><input type="time" bind:value={ruleTime} disabled={ruleAction === "skip"} /></label>
       <label class="field"><span class="field-label">Priorität</span><input type="number" bind:value={rulePriority} min="0" max="1000" /></label>
       <label class="field"><span class="field-label">Wochentage</span><input bind:value={ruleWeekdays} placeholder="0,1,2" /><small>Montag 0 bis Sonntag 6.</small></label>
-      <label class="field"><span class="field-label">Von</span><input type="date" bind:value={ruleDateFrom} /></label>
-      <label class="field"><span class="field-label">Bis</span><input type="date" bind:value={ruleDateTo} /></label>
+      <label class="field"><span class="field-label">Gültig ab</span><input type="date" bind:value={ruleDateFrom} /></label>
+      <label class="field"><span class="field-label">Gültig bis</span><input type="date" bind:value={ruleDateTo} /></label>
       <div class="field full action-row"><button class="button" type="submit" disabled={pendingCommand !== null || !snapshot.capabilities.edit_rules}><Save size={16} /> Regel speichern</button></div>
     </form>
   </section>

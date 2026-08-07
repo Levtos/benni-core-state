@@ -7,6 +7,7 @@ export interface CoreStateViewState {
   status: DataStatus;
   error: string | null;
   pendingCommand: string | null;
+  commandResult: CommandAck | null;
 }
 
 type Listener = (state: CoreStateViewState) => void;
@@ -18,6 +19,7 @@ export class CoreStateStore {
     status: "loading",
     error: null,
     pendingCommand: null,
+    commandResult: null,
   };
 
   private adapter: CoreStateAdapter | null = null;
@@ -87,7 +89,7 @@ export class CoreStateStore {
 
   async command(command: string, payload: Record<string, unknown> = {}): Promise<CommandAck> {
     if (!this.adapter) {
-      return {
+      const result: CommandAck = {
         contract: "benni_core_state.command_ack",
         version: "1.0.0",
         request_id: "",
@@ -95,13 +97,16 @@ export class CoreStateStore {
         status: "error",
         error: "adapter_unavailable",
       };
+      this.patch({ commandResult: result, error: result.error });
+      return result;
     }
     const requestId = `${command}:${crypto.randomUUID()}`;
-    this.patch({ pendingCommand: command, error: null });
+    this.patch({ pendingCommand: command, commandResult: null, error: null });
     try {
       const result = await this.adapter.command(requestId, command, payload);
       if (result.status === "success") await this.refresh();
       else this.patch({ error: result.error ?? "Command fehlgeschlagen." });
+      this.patch({ commandResult: result });
       return result;
     } catch (error) {
       const result: CommandAck = {
@@ -112,7 +117,7 @@ export class CoreStateStore {
         status: "error",
         error: this.message(error),
       };
-      this.patch({ error: result.error });
+      this.patch({ error: result.error, commandResult: result });
       return result;
     } finally {
       this.patch({ pendingCommand: null });

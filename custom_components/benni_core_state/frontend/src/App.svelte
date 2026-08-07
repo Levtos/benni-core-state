@@ -6,7 +6,7 @@
   import { hassStore } from "./main";
   import { createAdapter } from "./lib/adapters";
   import type { DataStatus } from "./lib/contracts";
-  import { statusLabel } from "./lib/contracts";
+  import { displayCommandError, statusLabel } from "./lib/contracts";
   import { CoreStateStore, type CoreStateViewState } from "./lib/store";
   import CalendarView from "./views/CalendarView.svelte";
   import DiagnosticsView from "./views/DiagnosticsView.svelte";
@@ -65,12 +65,16 @@
   <header class="module-header">
     <div>
       <p class="eyebrow">Core State</p>
-      <h1>Alltag im Gleichgewicht</h1>
+      <h1>Core State</h1>
+      <p class="module-subtitle">Aktueller Alltagsstatus und Wake Planning</p>
     </div>
     <div class="module-status" data-status={viewState.status} aria-live="polite">
       <span class="status-dot" aria-hidden="true"></span>
-      <span>{statusLabel(viewState.status as DataStatus)}</span>
-      {#if viewState.snapshot?.version}<span class="contract-version">v{viewState.snapshot.version}</span>{/if}
+      <span>Datenlage: {statusLabel(viewState.status as DataStatus)}</span>
+      {#if viewState.snapshot}
+        <span class="version-chip">Integration v{viewState.snapshot.integration_version}</span>
+        <span class="contract-version">UX-Vertrag v{viewState.snapshot.version}</span>
+      {/if}
     </div>
   </header>
 
@@ -95,6 +99,19 @@
 
   {#if viewState.error}
     <div class="inline-error" role="alert">{viewState.error}</div>
+  {/if}
+
+  {#if viewState.commandResult}
+    <div class:command-success={viewState.commandResult.status === "success"} class:command-pending={viewState.commandResult.status === "pending"} class:command-error={viewState.commandResult.status === "error"} class="command-feedback" role={viewState.commandResult.status === "error" ? "alert" : "status"}>
+      <strong>{viewState.commandResult.status === "success" ? "Gespeichert" : viewState.commandResult.status === "pending" ? "Wird gespeichert" : "Nicht gespeichert"}</strong>
+      <span>
+        {viewState.commandResult.status === "success"
+          ? "Core State wurde neu synchronisiert."
+          : viewState.commandResult.status === "pending"
+            ? "Core State verarbeitet die Änderung."
+            : displayCommandError(viewState.commandResult.error)}
+      </span>
+    </div>
   {/if}
 
   <main class="module-content">
