@@ -128,6 +128,24 @@ def test_missing_values_are_visible_and_never_guessed():
     assert plan.wake_due is False
 
 
+def test_unavailable_wake_source_stays_unavailable_for_legacy_fallback():
+    plan = plan_sleep_window(
+        now=datetime(2026, 8, 7, 0, 0, tzinfo=BERLIN),
+        scheduled_wake=datetime(2026, 8, 7, 8, 30, tzinfo=BERLIN),
+        wake_window_minutes=0,
+        manual_sleep_start=None,
+        minimum_sleep_minutes=360,
+        provisional_lead_minutes=540,
+        wake_source_status="unavailable",
+        wake_source_quality="missing_rules",
+    )
+
+    assert plan.source_status == "unavailable"
+    assert plan.source_quality == "missing_rules"
+    assert plan.available is False
+    assert plan.as_attributes()["source_status"] == "unavailable"
+
+
 def test_elapsed_duration_is_restart_safe_across_spring_dst():
     plan = _plan(
         datetime(2026, 3, 28, 22, 30, tzinfo=BERLIN),
