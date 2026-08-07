@@ -1,9 +1,11 @@
-# Core-State Umbrella-UX – Entscheidungsnotiz v1.0.0
+# Core-State Umbrella-UX – Entscheidungsnotiz v1.1.0
 
-**Status:** technische Umsetzung in Draft-PR, kein Consumer-Cutover und keine Live-Freigabe.
+**Status:** PR #46 ist in `main` gemergt; die Shadow-DOM-Korrektur für #36 wird
+technisch nachverifiziert. Kein Consumer-Cutover und keine Live-Freigabe.
 **Scope:** ausschließlich `Levtos/benni-core-state#36`.
 **Start-Gate:** Core-State #27, #28 und #29 sind im am 2026-08-07 verifizierten
-Default-Branch `main` enthalten (`51d7abcdd43ece9a3b4725ce797ce74b9fe77cfd`).
+Default-Branch `main` enthalten (`338c73f0c386893cd145f1d0d03ae78e60f0f2cd`,
+Merge von PR #46).
 
 ## Entscheidungen
 
@@ -29,14 +31,25 @@ Default-Branch `main` enthalten (`51d7abcdd43ece9a3b4725ce797ce74b9fe77cfd`).
    `ux_subscribe`; REST ist nur der Standalone-Adapter. Requests tragen eine
    idempotente ID, deren Ergebnis begrenzt persistiert wird.
 
-4. **Frontend.** Svelte 5, Vite und TypeScript folgen ADR 0001. Die fünf
-   internen Ansichten sind Heute, Kalender, Profile & Regeln, Diagnose und
-   Einstellungen. Die Timeline mit neun Phasen, Eintrittszeiten, proportionalen
-   Breiten, Jetzt-Markierung, Fortschritt und nächstem Wechsel wird im Backend
-   berechnet. Das Frontend formatiert und rendert nur Vertragsdaten; es besitzt
-   keine Regelengine, Wake-Berechnung, Profilwahl, Mindestschlaf- oder Bio-Logik.
+4. **Frontend.** Svelte 5, Vite und TypeScript folgen ADR 0001. Tailwind-
+   Utilities, CSS Custom Properties, Lucide, Bits UI für die Timeline-Tooltips
+   und eine kontrolliert übernommene shadcn-svelte-kompatible Button-Primitivität
+   werden fachlich begrenzt eingesetzt. Die fünf internen Ansichten sind Heute,
+   Kalender, Profile & Regeln, Diagnose und Einstellungen. Die Timeline mit neun
+   Phasen, Eintrittszeiten, proportionalen Breiten, Jetzt-Markierung, Fortschritt
+   und nächstem Wechsel wird im Backend berechnet. Das Frontend formatiert und
+   rendert nur Vertragsdaten; es besitzt keine Regelengine, Wake-Berechnung,
+   Profilwahl, Mindestschlaf- oder Bio-Logik.
 
-5. **Wake-/Sleep-Verträge.** `awake`, `provisional_sleep`, `sleep` und `waking`
+5. **Shadow-DOM-Adaptergrenze.** `bcs-app` mountet das Svelte-Modul in einen
+   eigenen offenen Shadow Root. Pro Instanz wird genau ein Stylesheet und ein
+   Mount-Container innerhalb dieses Roots verwaltet; Mount, Unmount, Remount und
+   mehrere Instanzen sind idempotent. Styles werden nicht in `document.head`
+   injiziert. Die Graphite-Tokens liegen auf `:host`, fachliche Selektoren sind
+   auf den Modul-Root begrenzt, und Dokumenttitel, Host-Typografie, Host-
+   Hintergrund sowie äußere Shadow Roots bleiben unverändert.
+
+6. **Wake-/Sleep-Verträge.** `awake`, `provisional_sleep`, `sleep` und `waking`
    bleiben getrennt. `provisional_sleep` ist Schutzstatus und keine bestätigte
    Schlafzeit. Werktag und Wochenende sind die einzigen wirksamen Profile;
    Samstag ist Wochenende. Feiertage und Urlaub werden als Werktag-auf-
@@ -46,7 +59,7 @@ Default-Branch `main` enthalten (`51d7abcdd43ece9a3b4725ce797ce74b9fe77cfd`).
    `bio.mark_sleep`- und `bio.mark_awake`-Commands an; kein `waking`-Button,
    kein `inferred_sleep`.
 
-6. **Eigene Persistenz und Migration.** Die automatische Konfiguration liegt
+7. **Eigene Persistenz und Migration.** Die automatische Konfiguration liegt
    versioniert in `.storage/benni_core_state_wake_planning_<entry_id>` (Storage
    v1); der idempotente Command-Log liegt in
    `.storage/benni_core_state_ux_commands_<entry_id>` (Storage v1). Die
@@ -57,13 +70,13 @@ Default-Branch `main` enthalten (`51d7abcdd43ece9a3b4725ce797ce74b9fe77cfd`).
    eigenen Namespace gesichert. Rollback schreibt ausschließlich Core State und
    liest oder schreibt keine Legacy-Entity.
 
-7. **Legacy-Grenze.** `ha_wake_planner` ist während der Migration ausschließlich
+8. **Legacy-Grenze.** `ha_wake_planner` ist während der Migration ausschließlich
    Vergleichs-, Diagnose- und Rollbackquelle. Die temporäre Legacy-vs-Core-
    Capability erscheint nur, wenn eine Legacy-Referenz tatsächlich verfügbar
    ist, und kann nach dem Cutover vollständig verschwinden. Browser und Gateway
    rufen keine alten Entities, Services, WebSockets oder Stores auf.
 
-8. **Status und Berechtigungen.** Snapshot- und Projektionsdaten tragen
+9. **Status und Berechtigungen.** Snapshot- und Projektionsdaten tragen
    Datenstatus, Qualität, Freshness und Degradation; bei Verbindungsabbruch
    folgt Reconnect mit Resync statt konkurrierender Statuswahrheit. Schreibende
    Commands benötigen einen authentifizierten Home-Assistant-Admin. `testing`
@@ -72,8 +85,16 @@ Default-Branch `main` enthalten (`51d7abcdd43ece9a3b4725ce797ce74b9fe77cfd`).
 
 ## Verifikation und offene Risiken
 
+- Die nested-Shadow-DOM-Browserprüfung deckt den generierten Vite-Build und den
+  Source-Modus ab: Graphite-Hintergrund/Text, Kartenflächen/-rahmen, Grid/Flex,
+  Navigation/Active-State, Timeline, Touch-Ziele, Fokus, Accessibility-
+  Semantik, alle fünf Ansichten, zwei Instanzen, Remount und Style-Isolation.
+  Desktop (1280px) und Tablet (768px) sind geprüft; der Build-Viewport-
+  Screenshot liegt als lokales Testartefakt unter
+  `artifacts/core-state-shadow-dom-viewport.png`.
 - Python-, Contract-, Migrations-, Frontend-, Component-, Type-, Lint-, Build-,
-  Accessibility-, JSON-, Link- und Diff-Prüfungen laufen im Draft-PR.
+  Accessibility-, JSON-, Link- und Diff-Prüfungen werden im Fix-PR mit den
+  aktuellen Ergebnissen dokumentiert.
 - Der Legacy-freie Migrationstest plant mit der eigenen migrierten Konfiguration
   ohne verfügbare Wake-Planner-Entity.
 - HA-Runtime-Importe und die Adapterkommunikation sind lokal ohne laufende

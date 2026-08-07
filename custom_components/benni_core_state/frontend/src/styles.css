@@ -1,9 +1,13 @@
-:root {
+@import "tailwindcss/utilities.css";
+
+:host {
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   color: #e7edf4;
   background: #11161d;
+  display: block;
   font-synthesis: none;
+  min-height: 100vh;
   text-rendering: optimizeLegibility;
   --graphite-950: #11161d;
   --graphite-900: #171d25;
@@ -26,40 +30,44 @@
   --shadow: 0 12px 30px rgba(0, 0, 0, 0.2);
 }
 
-* {
+.core-state-module,
+.core-state-module *,
+.core-state-module *::before,
+.core-state-module *::after {
   box-sizing: border-box;
 }
 
-body {
-  margin: 0;
-  min-width: 320px;
-  min-height: 100vh;
-  background: var(--graphite-950);
-}
-
-button,
-input,
-select,
-textarea {
-  font: inherit;
-}
-
-button {
-  cursor: pointer;
-}
-
-button:focus-visible,
-input:focus-visible,
-select:focus-visible,
-textarea:focus-visible {
-  outline: 2px solid var(--cyan);
-  outline-offset: 2px;
-}
-
 .core-state-module {
+  min-height: 100%;
+  margin: 0;
   width: min(1180px, calc(100% - 32px));
   margin: 0 auto;
   padding: 28px 0 48px;
+  color: var(--text);
+  background: var(--graphite-950);
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+.core-state-module button,
+.core-state-module input,
+.core-state-module select,
+.core-state-module textarea {
+  font: inherit;
+}
+
+.core-state-module button {
+  cursor: pointer;
+}
+
+.core-state-module button:focus-visible,
+.core-state-module input:focus-visible,
+.core-state-module select:focus-visible,
+.core-state-module textarea:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 2px;
 }
 
 .module-header {
@@ -81,26 +89,26 @@ textarea:focus-visible {
   text-transform: uppercase;
 }
 
-h1,
-h2,
-h3,
-p {
+.core-state-module h1,
+.core-state-module h2,
+.core-state-module h3,
+.core-state-module p {
   margin-top: 0;
 }
 
-h1 {
+.core-state-module h1 {
   margin-bottom: 0;
   font-size: clamp(1.55rem, 3vw, 2.3rem);
   letter-spacing: -0.035em;
 }
 
-h2 {
+.core-state-module h2 {
   margin-bottom: 8px;
   font-size: clamp(1.45rem, 2.8vw, 2rem);
   letter-spacing: -0.025em;
 }
 
-h3 {
+.core-state-module h3 {
   margin-bottom: 6px;
   font-size: 1rem;
 }
@@ -475,6 +483,19 @@ h3 {
   white-space: nowrap;
 }
 
+.tooltip {
+  z-index: 10;
+  max-width: 260px;
+  padding: 8px 10px;
+  border: 1px solid var(--graphite-600);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  background: var(--graphite-800);
+  box-shadow: var(--shadow);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
 .progress-bar {
   height: 6px;
   margin-top: 12px;
@@ -679,11 +700,11 @@ h3 {
   white-space: pre-wrap;
 }
 
-details {
+.core-state-module details {
   border-top: 1px solid var(--graphite-700);
 }
 
-details summary {
+.core-state-module details summary {
   min-height: 44px;
   padding: 13px 0;
   color: var(--cyan);
@@ -692,7 +713,7 @@ details summary {
   font-weight: 650;
 }
 
-details[open] summary {
+.core-state-module details[open] summary {
   margin-bottom: 8px;
 }
 
@@ -756,9 +777,10 @@ details[open] summary {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
+  .core-state-module,
+  .core-state-module *,
+  .core-state-module *::before,
+  .core-state-module *::after {
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;

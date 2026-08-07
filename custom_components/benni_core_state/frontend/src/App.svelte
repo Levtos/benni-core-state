@@ -61,11 +61,7 @@
   });
 </script>
 
-<svelte:head>
-  <title>Core State</title>
-</svelte:head>
-
-<section class="core-state-module" aria-label="Core State">
+<section class="core-state-module min-h-full" aria-label="Core State">
   <header class="module-header">
     <div>
       <p class="eyebrow">Core State</p>
@@ -78,7 +74,7 @@
     </div>
   </header>
 
-  <nav class="module-nav" aria-label="Core-State-Bereiche">
+  <nav class="module-nav flex items-center gap-1" aria-label="Core-State-Bereiche">
     {#each navigation as item (item.id)}
       <button
         class:active={activeView === item.id}
