@@ -6,10 +6,11 @@
   import {
     displayMetric,
     formatDateTime,
-    formatTime,
     humanReason,
     statusLabel,
   } from "../lib/contracts";
+  import Button from "../lib/ui/Button.svelte";
+  import TimelinePhase from "../lib/ui/TimelinePhase.svelte";
 
   interface Props {
     snapshot: Snapshot | null;
@@ -54,24 +55,21 @@
       </div>
       <div class="action-row">
         {#if snapshot.capabilities.mark_sleep && today.bio.state !== "sleep"}
-          <button
-            class="button"
-            type="button"
+          <Button
             disabled={pendingCommand !== null}
             onclick={() => onCommand("bio.mark_sleep")}
           >
             <Moon size={16} /> Schlaf markieren
-          </button>
+          </Button>
         {/if}
         {#if snapshot.capabilities.mark_awake && today.bio.state !== "awake"}
-          <button
-            class="button secondary"
-            type="button"
+          <Button
+            variant="secondary"
             disabled={pendingCommand !== null}
             onclick={() => onCommand("bio.mark_awake")}
           >
             <Sun size={16} /> Wach markieren
-          </button>
+          </Button>
         {/if}
       </div>
     </div>
@@ -116,15 +114,7 @@
     <div class="timeline-track" aria-label="Neunphasige Tagesrhythmus-Timeline">
       <span class="timeline-marker" style={`left: ${timeline.now_marker_pct}%;`} aria-label="Jetzt"></span>
       {#each timeline.phases as phase (phase.id)}
-        <div
-          class:active={phase.active}
-          class="timeline-phase"
-          style={`flex-grow: ${phase.width_pct};`}
-          title={`${phase.label}: ${formatTime(phase.start)}–${formatTime(phase.end)}`}
-        >
-          <span class="timeline-phase-label">{phase.label}</span>
-          <span class="timeline-phase-time">{formatTime(phase.start)}</span>
-        </div>
+        <TimelinePhase {phase} />
       {/each}
     </div>
     <div class="progress-bar" aria-label={`Fortschritt ${timeline.active_phase_progress_pct}%`}>
