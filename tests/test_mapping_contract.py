@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 
 from custom_components.benni_core_state import mapping as m
+from custom_components.benni_core_state.const import ACTIVITY_PRECEDENCE
 
 
 def test_corrected_day_state_contract_is_exactly_nine_phases() -> None:
@@ -102,6 +103,19 @@ def test_old_outputs_keep_actual_semantics_and_are_not_rebound_now() -> None:
     assert m.mapping_for("wake_needed").allowed_states == ("on", "off")
     assert "Bio-State" not in m.mapping_for("wake_needed").contract_fact
     assert m.mapping_for("waking").status == m.STATUS_ATTRIBUTE_ONLY
+
+    activity = m.mapping_for("activity_state")
+    assert m.MAPPING_CONTRACT_VERSION == "1.5.0"
+    assert activity.allowed_states[: len(ACTIVITY_PRECEDENCE)] == ACTIVITY_PRECEDENCE
+    assert "work_away" in activity.allowed_states
+    for attribute in (
+        "activity_decision",
+        "media_activity_feed_quality",
+        "media_activity_source",
+    ):
+        assert attribute in activity.attributes
+    assert "activity_decision.freshness" in activity.target_attributes
+    assert "activity_decision.decision_timestamp" in activity.target_attributes
 
 
 def test_startup_apply_ready_mapping_is_canonical_and_diagnostic() -> None:

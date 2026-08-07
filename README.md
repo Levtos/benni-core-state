@@ -67,7 +67,7 @@ Die folgende Tabelle zeigt die Route **Benni**:
 | `sensor.benni_core_state_bio_state` | enum | `sleep`, `provisional_sleep`, `waking`, `awake` |
 | `sensor.benni_core_state_day_state` | enum | `early_night`, `late_night`, `early_morning`, `forenoon`, `midday`, `afternoon`, `late_afternoon`, `evening`, `late_evening` |
 | `sensor.benni_core_state_day_context` | enum | `werktag`, `wochenende`, `frei` |
-| `sensor.benni_core_state_activity_state` | enum | `sleep`, `waking`, `idle`, `free_time`, `work_home`, `work_away`, `private_time`, `household` |
+| `sensor.benni_core_state_activity_state` | enum | `sleep`, `waking`, `private_time`, `gaming`, `entertainment`, `music`, `work_home`, `household`, `pc_active`, `free_time`, `idle` (plus legacy `work_away`) |
 | `sensor.benni_core_state_master_context` | string | komposit `presence.bio.day_state.day_context.activity` |
 | `sensor.benni_core_state_wake_state` | enum | `scheduled`, `skipped`, `overridden`, `holiday`, `inactive` (read-only Shadow) |
 | `sensor.benni_core_state_next_wake` | timestamp | lokaler nächster Wake-Zeitpunkt (read-only Shadow) |
@@ -107,8 +107,19 @@ statt auf `unavailable` zu gehen.
   einstündigen Sprung in den lokalen Phasen.
   Die `day_state`-Attribute enthalten Datum, aktive Phase, effektive lokale
   Grenzen, Saisonparameter, Reason und Modellversion.
-* **Activity** bleibt klein; `sleep`/`waking` spiegeln den Bio-State, TV/Gaming
-  etc. sind Media-Kontext (Attribut), kein Activity-Hauptstate.
+* **Activity** gehört Core State. Die kanonische Entscheidung folgt exakt
+  `sleep > waking > private_time > gaming > entertainment > music > work_home >
+  household > pc_active > free_time > idle`. Media State liefert dafür nur den
+  qualitätsgeprüften `activity_context`-Feed; Core State liest keine Media-Roh-
+  signale und Media State liest keinen fertigen Core-State-Activity-State.
+  `activity_state` trägt im Attribut `activity_decision` Gewinner, alle gültigen
+  und unterdrückten Kandidaten, Quellen, Freshness, Qualität, Degraded-/Fallback-
+  Grund und Entscheidungszeitpunkt. `work_away` bleibt als historisch erlaubter
+  Enum-Wert erhalten, wird aber ohne einen eigenen beschlossenen Eingang nicht
+  erzeugt. Ein Feedwert `free_time` bleibt als explizite Legacy-Kompatibilität
+  zulässig; unbekannte, nicht verfügbare, stale oder degraded Feedwerte können
+  nie gewinnen und fallen deterministisch auf `idle` beziehungsweise eine
+  niedrigere gültige lokale Aktivität zurück.
 
 ## Services
 

@@ -191,11 +191,29 @@ ACT_GAMING = "gaming"
 ACT_ENTERTAINMENT = "entertainment"
 ACT_MUSIC = "music"
 ACT_PC_ACTIVE = "pc_active"
-ACTIVITY_STATES = [
-    ACT_SLEEP, ACT_WAKING, ACT_IDLE, ACT_FREE_TIME, ACT_WORK_HOME, ACT_WORK_AWAY,
-    ACT_PRIVATE, ACT_HOUSEHOLD,
-    ACT_GAMING, ACT_ENTERTAINMENT, ACT_MUSIC, ACT_PC_ACTIVE,
-]
+# Binding decision order for the Core-State activity arbiter.  ``work_away`` is
+# intentionally not part of this tuple: it remains a published legacy enum
+# value, but there is no owned input contract that can safely produce it.
+ACTIVITY_PRECEDENCE: Final[tuple[str, ...]] = (
+    ACT_SLEEP,
+    ACT_WAKING,
+    ACT_PRIVATE,
+    ACT_GAMING,
+    ACT_ENTERTAINMENT,
+    ACT_MUSIC,
+    ACT_WORK_HOME,
+    ACT_HOUSEHOLD,
+    ACT_PC_ACTIVE,
+    ACT_FREE_TIME,
+    ACT_IDLE,
+)
+ACTIVITY_DECISION_CONTRACT_VERSION: Final[str] = "1.0.0"
+# Media State currently updates on source changes rather than publishing a
+# separate freshness field.  Core State therefore applies this bounded
+# consumer-side age gate to the feed timestamp; a producer-provided stale or
+# degraded marker still wins over the age calculation.
+DEFAULT_ACTIVITY_FEED_FRESHNESS_SECONDS: Final[int] = 1800
+ACTIVITY_STATES = [*ACTIVITY_PRECEDENCE, ACT_WORK_AWAY]
 
 # --- Presence-Effective Activity-Hold (PR3) ----------------------------------
 # Starke lokale Aktivität darf `presence_effective` bei rohem `abwesend` auf
