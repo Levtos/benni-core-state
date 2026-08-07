@@ -313,7 +313,7 @@ CANONICAL_MAPPINGS: Final[tuple[EntityMapping, ...]] = (
         consumer_issue="https://github.com/Levtos/benni-core-state/issues/28",
         entity_id_pattern="sensor.{profile}_core_state_bio_state",
         entity_suffix="bio_state",
-         target_attributes=("bio_state", "wake_interaction"),
+        target_attributes=("bio_state", "wake_interaction"),
     ),
     EntityMapping(
         mapping_key="day_state",
