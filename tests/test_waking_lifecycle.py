@@ -9,7 +9,10 @@ from custom_components.benni_core_state.const import (
     DAY_FORENOON,
     PERS_HOME,
 )
-from custom_components.benni_core_state.logic import compute_bio_state
+from custom_components.benni_core_state.logic import (
+    compute_bio_state,
+    regular_wake_interaction_decision,
+)
 from custom_components.benni_core_state.models import PersistentState
 
 
@@ -33,6 +36,7 @@ def _compute(
     sleep_start: datetime | None = None,
     active_since: dict[str, datetime | None] | None = None,
     waking_started: datetime | None = None,
+    interaction_reference_start: datetime | None = None,
 ):
     return compute_bio_state(
         prev_state=previous,
@@ -46,6 +50,7 @@ def _compute(
         indicator_active_since=active_since,
         wake_due=False,
         waking_started=waking_started,
+        interaction_reference_start=interaction_reference_start,
     )
 
 
@@ -117,6 +122,70 @@ def test_stale_level_signal_is_ignored_during_waking():
     assert state == BIO_WAKING
 
 
+def test_signal_active_before_provisional_sleep_is_ignored():
+    provisional_start = NOW - timedelta(minutes=5)
+    indicators = {**NO_INDICATORS, "pc": True}
+    active_since = {key: None for key in NO_INDICATORS}
+    active_since["pc"] = provisional_start - timedelta(seconds=1)
+
+    state, _, _ = _compute(
+        BIO_PROVISIONAL_SLEEP,
+        indicators=indicators,
+        sleep_start=NOW - timedelta(hours=8),
+        active_since=active_since,
+        interaction_reference_start=provisional_start,
+    )
+
+    assert state == BIO_PROVISIONAL_SLEEP
+
+
+def test_wake_interaction_diagnoses_freshness_strength_and_priority():
+    reference = NOW - timedelta(minutes=5)
+    indicators = {**NO_INDICATORS, "coffee": True, "pc": True}
+    active_since = {key: None for key in NO_INDICATORS}
+    active_since["coffee"] = NOW - timedelta(minutes=1)
+    active_since["pc"] = reference - timedelta(seconds=1)
+
+    decision = regular_wake_interaction_decision(
+        indicators=indicators,
+        day_state=DAY_FORENOON,
+        indicator_active_since=active_since,
+        sleep_started=reference,
+    )
+
+    assert decision.accepted is True
+    assert decision.source == "coffee"
+    assert decision.signal_strength == "strong"
+    assert decision.priority == 4
+    assert decision.freshness == "fresh"
+    assert decision.valid_candidates == ("coffee",)
+    assert decision.rejected_candidates == ("pc",)
+    attrs = decision.as_attributes()
+    assert attrs["signal_strength"] == "strong"
+    assert attrs["priority"] == 4
+    assert attrs["rejected_candidates"] == ["pc"]
+
+
+def test_wake_interaction_exposes_rejection_reason_for_stale_signal():
+    reference = NOW - timedelta(minutes=5)
+    indicators = {**NO_INDICATORS, "door": True}
+    active_since = {key: None for key in NO_INDICATORS}
+    active_since["door"] = reference
+
+    decision = regular_wake_interaction_decision(
+        indicators=indicators,
+        day_state=DAY_FORENOON,
+        indicator_active_since=active_since,
+        sleep_started=reference,
+    )
+
+    assert decision.accepted is False
+    assert decision.signal_strength == "strong"
+    assert decision.priority == 3
+    assert decision.freshness == "stale"
+    assert decision.rejection_reason == "before_reference"
+
+
 def test_regular_interaction_ends_sleep_and_provisional_sleep():
     sleep_start = NOW - timedelta(hours=6)
     indicators = {**NO_INDICATORS, "door": True}
@@ -174,3 +243,20 @@ def test_waking_start_survives_persistence_roundtrip():
 
     assert restored.bio_state == BIO_WAKING
     assert restored.last_waking_start == NOW.isoformat()
+
+
+def test_persisted_waking_start_still_times_out_after_restart():
+    restored = PersistentState.from_dict(
+        PersistentState(
+            bio_state=BIO_WAKING,
+            last_waking_start=(NOW - timedelta(minutes=30)).isoformat(),
+        ).to_dict()
+    )
+
+    state, _, awake_start = _compute(
+        restored.bio_state,
+        waking_started=datetime.fromisoformat(restored.last_waking_start),
+    )
+
+    assert state == BIO_AWAKE
+    assert awake_start == NOW

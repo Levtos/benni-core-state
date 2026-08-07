@@ -739,8 +739,12 @@ def compute_preheat(
 # --------------------------------------------------------- bio_state
 
 
-_STRONG_INDICATORS = ("coffee", "door")
-_SOFT_INDICATORS = ("pc", "ps5")
+_WAKE_INTERACTION_CANDIDATES = (
+    ("coffee", "strong", 4),
+    ("door", "strong", 3),
+    ("pc", "soft", 2),
+    ("ps5", "soft", 1),
+)
 _WAKE_ALLOWED_DAY_STATES = (
     DAY_EARLY_MORNING,
     DAY_FORENOON,
@@ -760,27 +764,164 @@ def wake_indicators_allowed(day_state: str | None) -> bool:
     return day_state in _WAKE_ALLOWED_DAY_STATES
 
 
-def _indicator_can_wake(
+@dataclass(frozen=True)
+class WakeInteractionDecision:
+    """Explain one deterministic regular-wake interaction decision."""
+
+    accepted: bool
+    source: str | None
+    signal_strength: str | None
+    priority: int | None
+    freshness: str
+    rejection_reason: str | None
+    reference_start: datetime | None
+    active_since: datetime | None
+    valid_candidates: tuple[str, ...] = ()
+    suppressed_candidates: tuple[str, ...] = ()
+    rejected_candidates: tuple[str, ...] = ()
+
+    def as_attributes(self) -> dict[str, Any]:
+        return {
+            "accepted": self.accepted,
+            "source": self.source,
+            "signal_strength": self.signal_strength,
+            "priority": self.priority,
+            "freshness": self.freshness,
+            "rejection_reason": self.rejection_reason,
+            "reference_start": (
+                self.reference_start.isoformat() if self.reference_start else None
+            ),
+            "active_since": (
+                self.active_since.isoformat() if self.active_since else None
+            ),
+            "valid_candidates": list(self.valid_candidates),
+            "suppressed_candidates": list(self.suppressed_candidates),
+            "rejected_candidates": list(self.rejected_candidates),
+        }
+
+
+def _indicator_freshness(
     key: str,
     indicators: dict[str, bool],
     indicator_active_since: dict[str, datetime | None] | None,
-    prev_sleep_start: datetime | None,
-) -> bool:
-    """Return whether an active indicator is fresh enough to wake from sleep.
+    reference_start: datetime | None,
+) -> str:
+    """Classify an active level signal against the current lifecycle edge.
 
     A manual sleep request should not be undone by stale level-style sensors
     that were already active before sleep started. Once such a source cycles
-    off and on again, its ``last_changed`` moves behind ``last_sleep_start``
+    off and on again, its ``last_changed`` moves after the lifecycle reference
     and it is allowed to wake normally.
     """
     if not indicators.get(key):
-        return False
-    if prev_sleep_start is None or indicator_active_since is None:
-        return True
+        return "inactive"
+    if reference_start is None:
+        return "unknown_reference"
+    if indicator_active_since is None:
+        return "unknown_timestamp"
     active_since = indicator_active_since.get(key)
     if active_since is None:
-        return True
-    return active_since > prev_sleep_start
+        return "unknown_timestamp"
+    return "fresh" if active_since > reference_start else "stale"
+
+
+def regular_wake_interaction_decision(
+    *,
+    indicators: dict[str, bool],
+    day_state: str | None,
+    indicator_active_since: dict[str, datetime | None] | None,
+    sleep_started: datetime | None,
+) -> WakeInteractionDecision:
+    """Return the complete, deterministic decision for a regular wake signal."""
+
+    active_candidates = [
+        (key, strength, priority)
+        for key, strength, priority in _WAKE_INTERACTION_CANDIDATES
+        if indicators.get(key)
+    ]
+    if not active_candidates:
+        return WakeInteractionDecision(
+            accepted=False,
+            source=None,
+            signal_strength=None,
+            priority=None,
+            freshness="inactive",
+            rejection_reason="no_active_signal",
+            reference_start=sleep_started,
+            active_since=None,
+        )
+
+    if not wake_indicators_allowed(day_state):
+        key, strength, priority = active_candidates[0]
+        return WakeInteractionDecision(
+            accepted=False,
+            source=key,
+            signal_strength=strength,
+            priority=priority,
+            freshness="phase_blocked",
+            rejection_reason="day_phase_blocked",
+            reference_start=sleep_started,
+            active_since=(
+                indicator_active_since.get(key)
+                if indicator_active_since is not None
+                else None
+            ),
+            rejected_candidates=tuple(key for key, _, _ in active_candidates),
+        )
+
+    candidate_statuses = [
+        (
+            key,
+            strength,
+            priority,
+            _indicator_freshness(
+                key, indicators, indicator_active_since, sleep_started
+            ),
+        )
+        for key, strength, priority in active_candidates
+    ]
+    valid = [
+        candidate
+        for candidate in candidate_statuses
+        if candidate[3] in {"fresh", "unknown_reference", "unknown_timestamp"}
+    ]
+    rejected = [candidate for candidate in candidate_statuses if candidate not in valid]
+    if not valid:
+        key, strength, priority, freshness = candidate_statuses[0]
+        return WakeInteractionDecision(
+            accepted=False,
+            source=key,
+            signal_strength=strength,
+            priority=priority,
+            freshness=freshness,
+            rejection_reason="before_reference",
+            reference_start=sleep_started,
+            active_since=(
+                indicator_active_since.get(key)
+                if indicator_active_since is not None
+                else None
+            ),
+            rejected_candidates=tuple(candidate[0] for candidate in rejected),
+        )
+
+    key, strength, priority, freshness = valid[0]
+    return WakeInteractionDecision(
+        accepted=True,
+        source=key,
+        signal_strength=strength,
+        priority=priority,
+        freshness="fresh" if freshness == "fresh" else "unknown",
+        rejection_reason=None,
+        reference_start=sleep_started,
+        active_since=(
+            indicator_active_since.get(key)
+            if indicator_active_since is not None
+            else None
+        ),
+        valid_candidates=tuple(candidate[0] for candidate in valid),
+        suppressed_candidates=tuple(candidate[0] for candidate in valid[1:]),
+        rejected_candidates=tuple(candidate[0] for candidate in rejected),
+    )
 
 
 def regular_wake_interaction(
@@ -790,17 +931,14 @@ def regular_wake_interaction(
     indicator_active_since: dict[str, datetime | None] | None,
     sleep_started: datetime | None,
 ) -> bool:
-    """Return the existing regular wake interaction with all context gates."""
+    """Return whether the existing regular wake interaction is accepted."""
 
-    strong = any(
-        _indicator_can_wake(k, indicators, indicator_active_since, sleep_started)
-        for k in _STRONG_INDICATORS
-    )
-    soft = any(
-        _indicator_can_wake(k, indicators, indicator_active_since, sleep_started)
-        for k in _SOFT_INDICATORS
-    )
-    return wake_indicators_allowed(day_state) and (strong or soft)
+    return regular_wake_interaction_decision(
+        indicators=indicators,
+        day_state=day_state,
+        indicator_active_since=indicator_active_since,
+        sleep_started=sleep_started,
+    ).accepted
 
 
 def compute_bio_state(
@@ -990,7 +1128,6 @@ def _seasonal_parameters(local_now: datetime) -> tuple[float, float, str, int]:
 
 def _phase_boundary_seconds(extension_seconds: float) -> dict[str, float]:
     """Build one local wall-clock profile from the seasonal accordion size."""
-    morning_extension = extension_seconds * DAY_STATE_MORNING_SHARE
     evening_extension = extension_seconds * DAY_STATE_EVENING_SHARE
     night_seconds = _WINTER_NIGHT_SECONDS - extension_seconds
     night_inner_split = night_seconds * (2 / 3)

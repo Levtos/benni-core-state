@@ -41,5 +41,15 @@ calculated timeout timestamp and one of the bounded transition reasons:
 `regular_wake_interaction`, `presence_departure`, `waking_timeout`,
 `waking_start_recovered_after_restart`, or a steady-state reason.
 
+The nested `wake_interaction` diagnostic is a pure decision projection. It
+reports the selected source, `signal_strength` (`strong`/`soft`), deterministic
+priority (coffee 4, door 3, PC 2, PS5 1), freshness, the current
+sleep/provisional reference, valid and suppressed candidates, and a bounded
+`rejection_reason` such as `no_active_signal`, `day_phase_blocked`, or
+`before_reference`. If a source has no usable active edge, its freshness is
+reported as `unknown` while the existing level-signal compatibility behavior is
+preserved. Signals with a known active edge at or before the current reference
+cannot complete the lifecycle.
+
 No `inferred_sleep`, visitor/friends signal, TV-only signal, music-only
 signal, Consumer action, release, deployment or live change is introduced.

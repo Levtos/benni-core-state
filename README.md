@@ -93,7 +93,7 @@ statt auf `unavailable` zu gehen.
   und **kein** Preheat.
 * **`coming_home`** entsteht nur aus echter Abwesenheit (vorheriger *realer*
   Presence-State war `abwesend`).
-* **Bio-State** ist die einzige Wahrheit für `sleep`, `provisional_sleep`, `waking` und `awake`. `provisional_sleep` ist nur der E/L/M/A-Schutzkorridor und zählt nie als bestätigter Schlaf. Der interne Wake-Plan startet `waking`; die erste reguläre Wachinteraktion oder spätestens ein restart-fester 30-Minuten-Timeout beendet `waking` zu `awake`. Das alte `wake_needed` bleibt nur bei degradiertem Sleep-Window als sichtbarer Kompatibilitätsfallback.
+* **Bio-State** ist die einzige Wahrheit für `sleep`, `provisional_sleep`, `waking` und `awake`. `provisional_sleep` ist nur der E/L/M/A-Schutzkorridor und zählt nie als bestätigter Schlaf. Der interne Wake-Plan startet `waking`; die erste reguläre Wachinteraktion oder spätestens ein restart-fester 30-Minuten-Timeout beendet `waking` zu `awake`. Das alte `wake_needed` bleibt nur bei degradiertem Sleep-Window als sichtbarer Kompatibilitätsfallback. Das Attribut `wake_interaction` erklärt Quelle, Signalstärke, Priorität, Freshness, Referenzzeitpunkt und Ablehnungsgrund.
 * **Day-State** folgt neun kalender-/datumsermittelten Phasen. Keine Grenze,
   einschließlich `00:00`, `midday` oder `14:00`, ist dauerhaft fest. Zwischen
   Winter- und Sommersonnenwende wächst der gesamte Nicht-Nacht-Block mit einer

@@ -671,16 +671,20 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
             waking_started = now
             self._persistent.last_waking_start = now.isoformat()
 
-        interaction_reference_start = (
-            _parse_iso(self._persistent.last_sleep_start)
-            or _parse_iso(self._persistent.last_provisional_sleep_start)
+        interaction_reference_start = _wake_interaction_reference_start(
+            previous_bio,
+            sleep_start=_parse_iso(self._persistent.last_sleep_start),
+            provisional_start=_parse_iso(
+                self._persistent.last_provisional_sleep_start
+            ),
         )
-        regular_interaction = logic.regular_wake_interaction(
+        interaction_decision = logic.regular_wake_interaction_decision(
             indicators=wake_indicators,
             day_state=day_state,
             indicator_active_since=wake_indicator_active_since,
             sleep_started=interaction_reference_start,
         )
+        regular_interaction = interaction_decision.accepted
         new_bio, sleep_start, awake_start = logic.compute_bio_state(
             prev_state=previous_bio,
             wake_needed=wake_needed,
@@ -717,8 +721,6 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
             current=new_bio,
             presence_personal=presence_personal,
             sleep_reason=sleep_plan.reason,
-            waking_started=waking_started,
-            now=now,
             recovered_start=waking_start_recovered,
             regular_interaction=regular_interaction,
         )
@@ -848,6 +850,7 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
                 ),
                 "wake_next": wake_next_raw,
                 "sleep_window": sleep_plan.as_attributes(),
+                "wake_interaction": interaction_decision.as_attributes(),
                 **{f"indicator_{k}": v for k, v in wake_indicators.items()},
                 **{
                     f"indicator_{k}_active_since": (
@@ -857,8 +860,9 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
                 },
             },
             "day_state": day_phase_diagnostics,
-            # #26 Shadow-only outputs.  These are additive read-only
-            # projections; the old wake inputs above continue to drive Bio.
+            # #26 Shadow-only outputs. These are additive read-only projections;
+            # the internal sleep-window result drives Bio when it is available,
+            # with the old wake inputs retained only as an explicit fallback.
             "wake_state": wake_attrs,
             "next_wake": wake_attrs,
             "wake_needed": wake_attrs,
@@ -1076,8 +1080,6 @@ def _bio_transition_reason(
     current: str,
     presence_personal: str,
     sleep_reason: str,
-    waking_started: datetime | None,
-    now: datetime,
     recovered_start: bool,
     regular_interaction: bool,
 ) -> str:
@@ -1144,6 +1146,28 @@ def _float_or_none(raw: Any) -> float | None:
 def _latest_datetime(*values: datetime | None) -> datetime | None:
     present = [value for value in values if value is not None]
     return max(present) if present else None
+
+
+def _wake_interaction_reference_start(
+    previous_bio: str,
+    *,
+    sleep_start: datetime | None,
+    provisional_start: datetime | None,
+) -> datetime | None:
+    """Select the lifecycle edge that regular signals must follow.
+
+    Confirmed sleep and provisional sleep each use their own current start. A
+    waking phase may have either origin, so the newest persisted edge is the
+    only safe reference. Other Bio states do not accept a stale historical edge.
+    """
+
+    if previous_bio == BIO_SLEEP:
+        return sleep_start
+    if previous_bio == BIO_PROVISIONAL_SLEEP:
+        return provisional_start
+    if previous_bio == BIO_WAKING:
+        return _latest_datetime(sleep_start, provisional_start)
+    return None
 
 
 # ----------------------------------------------------------------- lookups
