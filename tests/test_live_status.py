@@ -274,7 +274,10 @@ def test_color_role_mapping():
 
 
 def test_display_order_numeric_and_ranked():
-    o = lambda **kw: _ls(**kw).attrs["display_order"]
+    def order(**kw):
+        return _ls(**kw).attrs["display_order"]
+
+    o = order
     sleep = o(bio=BIO_SLEEP, activity=ACT_SLEEP)
     away = o(presence_personal=PERS_AWAY, presence_effective=EFF_AWAY)
     private = o(activity=ACT_PRIVATE)

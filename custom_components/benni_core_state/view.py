@@ -1,10 +1,8 @@
-"""Panel-Registrierung für das Benni-Core-State-Dashboard.
+"""Panel adapter for the built Core-State Svelte module.
 
-Liefert das modulare Vanilla-Web-Components-Frontend unter ``frontend/app/`` als
-statisches Verzeichnis aus (ES-Module importieren sich gegenseitig, kein Build)
-und registriert ein Custom-Panel in der HA-Sidebar.
-
-Muster 1:1 aus benni_light_policy übernommen (gleiche Konvention).
+The generated Vite output under ``frontend/app/`` is served as a static path;
+the host shell owns account, auth, locale and global navigation.  The panel
+registration is only a transitional HA adapter around the embeddable module.
 """
 from __future__ import annotations
 
