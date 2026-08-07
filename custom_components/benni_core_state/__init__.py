@@ -2,8 +2,9 @@
 
 Konservative Extraktion des Toolbox-Moduls ``benni_context`` in eine eigene
 HA-Domain ``benni_core_state``. Fachlicher Owner für presence / bio / day /
-activity / master-context. Wake Planner / Title Classifier werden ausschließlich
-als konfigurierte HA-Entities konsumiert — keine direkten Cross-Modul-Imports.
+activity / master-context. Core State owns the target Wake Planning module; a
+configured legacy ``ha_wake_planner`` entity is only a temporary migration and
+comparison bridge and never a target UX or command backend.
 
 Datenwurzel:  ``hass.data[DOMAIN][entry_id] = BenniCoreStateCoordinator``
 Services:     ``benni_core_state.*``
@@ -27,6 +28,7 @@ from .const import (
     DOMAIN,
     unique_id,
 )
+from .api import async_setup_api
 from .coordinator import BenniCoreStateCoordinator, all_coordinators
 from .entity_registry_migration import (
     STARTUP_APPLY_READY_DOMAIN,
@@ -150,6 +152,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Panel + WebSocket-API (Dashboard-Frontend). WS einmalig pro HA-Prozess.
     await async_setup_view(hass)
+    async_setup_api(hass)
     if not data.get(DATA_WS_REGISTERED):
         async_setup_websocket_api(hass)
         data[DATA_WS_REGISTERED] = True

@@ -86,6 +86,9 @@ CONF_WAKE_WINDOW_MINUTES = "wake_window_minutes"
 CONF_WAKE_FLOOR = "wake_floor"
 CONF_MINIMUM_SLEEP_MINUTES = "minimum_sleep_minutes"
 CONF_PROVISIONAL_LEAD_MINUTES = "provisional_lead_minutes"
+CONF_WAKE_CALENDAR_ENTITY = "wake_calendar_entity"
+CONF_HOLIDAY_CALENDAR_ENTITY = "holiday_calendar_entity"
+CONF_MANUAL_HOLIDAY_INTERVALS = "manual_holiday_intervals"
 
 # --- Defaults ----------------------------------------------------------------
 
@@ -318,6 +321,8 @@ PROFILE_SSIDS: dict[str, dict[str, list[str]]] = {
 # --- Storage -----------------------------------------------------------------
 
 STORAGE_VERSION = 1
+WAKE_CONFIG_STORAGE_VERSION = 1
+UX_COMMAND_STORAGE_VERSION = 1
 
 
 def storage_key(entry_id: str) -> str:
@@ -327,6 +332,16 @@ def storage_key(entry_id: str) -> str:
     disjunkt vom Toolbox-Key ``bennis_toolbox_benni_context_state_<entry_id>``.
     """
     return f"{DOMAIN}_state_{entry_id}"
+
+
+def wake_config_storage_key(entry_id: str) -> str:
+    """Own persistent automatic Wake-Planning configuration namespace."""
+    return f"{DOMAIN}_wake_planning_{entry_id}"
+
+
+def ux_command_storage_key(entry_id: str) -> str:
+    """Own bounded request-id log for idempotent UX commands."""
+    return f"{DOMAIN}_ux_commands_{entry_id}"
 
 
 def unique_id(entry_id: str, suffix: str) -> str:
@@ -356,8 +371,18 @@ PANEL_ELEMENT = "bcs-app"
 
 # WS-Commands (Namespace = Domain).
 WS_GET_STATUS = f"{DOMAIN}/get_status"
+WS_UX_SNAPSHOT = f"{DOMAIN}/ux_snapshot"
+WS_UX_PROJECTION = f"{DOMAIN}/ux_projection"
+WS_UX_COMMAND = f"{DOMAIN}/ux_command"
+WS_UX_SUBSCRIBE = f"{DOMAIN}/ux_subscribe"
+
+# Versioned browser/gateway contract identifiers.
+UX_SNAPSHOT_CONTRACT_VERSION = "1.0.0"
+UX_PROJECTION_CONTRACT_VERSION = "1.0.0"
+UX_COMMAND_CONTRACT_VERSION = "1.0.0"
 
 # hass.data[DOMAIN]-Flags für prozessweit-einmalige Registrierungen.
 DATA_WS_REGISTERED = "_ws_registered"
 DATA_VIEW_STATIC = "_view_static_registered"
 DATA_VIEW_PANEL = "_view_panel_registered"
+DATA_API_REGISTERED = "_api_registered"
