@@ -8,6 +8,8 @@ cross the browser boundary.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, time
+import json
+from pathlib import Path
 from typing import Any, Mapping
 
 from homeassistant.util import dt as dt_util
@@ -55,6 +57,18 @@ STATUS_VALUES = (
     "error",
     "blocked",
 )
+
+
+def _integration_version() -> str:
+    try:
+        manifest = json.loads((Path(__file__).parent / "manifest.json").read_text(encoding="utf-8"))
+        version = manifest.get("version")
+        return version if isinstance(version, str) and version else "unbekannt"
+    except (OSError, TypeError, ValueError):
+        return "unbekannt"
+
+
+INTEGRATION_VERSION = _integration_version()
 
 
 def _iso(value: datetime | None) -> str | None:
@@ -186,6 +200,7 @@ def build_snapshot(coord: Any, *, can_command: bool = True) -> dict[str, Any]:
         return {
             "contract": "benni_core_state.snapshot",
             "version": UX_SNAPSHOT_CONTRACT_VERSION,
+            "integration_version": INTEGRATION_VERSION,
             "status": status,
             "updated_at": None,
             "data": None,
@@ -221,6 +236,7 @@ def build_snapshot(coord: Any, *, can_command: bool = True) -> dict[str, Any]:
     return {
         "contract": "benni_core_state.snapshot",
         "version": UX_SNAPSHOT_CONTRACT_VERSION,
+        "integration_version": INTEGRATION_VERSION,
         "status": status,
         "updated_at": _iso(now),
         "data": {

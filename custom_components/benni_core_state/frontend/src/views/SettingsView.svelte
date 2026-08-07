@@ -72,11 +72,11 @@
         <p class="section-kicker">Konfiguration</p>
         <h3 id="settings-heading">Kalender, Konflikte und Floor</h3>
       </div>
-      <span class="chip cyan">Contract {snapshot.config.contract_version}</span>
+      <span class="chip cyan">Konfigurationsvertrag v{snapshot.config.contract_version}</span>
     </div>
     <form class="form-grid" onsubmit={saveSettings}>
       <label class="field">
-        <span class="field-label">Wake-Kalenderquelle</span>
+        <span class="field-label">Weck-Kalenderquelle</span>
         <input bind:value={calendarEntity} placeholder="calendar.core_state_wake" />
         <small>Nur externe Quelle lesen; Core State schreibt nicht in den Kalender.</small>
       </label>
@@ -91,7 +91,7 @@
         <small>Ein Datum oder Intervall pro Zeile. Samstag bleibt Wochenende.</small>
       </label>
       <label class="field">
-        <span class="field-label">Wake Window (Kalenderkonflikt)</span>
+        <span class="field-label">Weckfenster bei Kalenderkonflikt</span>
         <select bind:value={conflictBehavior}>
           <option value="warn_only">Warnen, Regelzeit beibehalten</option>
           <option value="wake_earlier">Für frühen Termin früher wecken</option>
@@ -103,7 +103,7 @@
         <input type="number" min="0" max="1440" bind:value={routineDuration} />
       </label>
       <label class="field">
-        <span class="field-label">Absoluter Floor</span>
+        <span class="field-label">Absoluter Weck-Floor</span>
         <input type="time" bind:value={wakeFloor} required />
         <small>Unabhängig von Tagesphase, Tageskontext und Sonnenaufgang.</small>
       </label>
@@ -113,7 +113,7 @@
         <small>Belegte automatische Skip-Titel; keine manuelle Skip-Aktion.</small>
       </label>
       <label class="field full">
-        <span class="field-label">Wake-Muster</span>
+        <span class="field-label">Weckmuster</span>
         <input bind:value={wakePattern} />
         <small>Backend validiert das Muster und redigiert Ereignistexte aus der Diagnose.</small>
       </label>
@@ -130,9 +130,9 @@
           <p class="section-kicker">Migration</p>
           <h3 id="migration-heading">Versionierte Übernahme</h3>
         </div>
-        <span class="chip orange">{snapshot.config.migration.status ?? "unbekannt"}</span>
+        <span class="chip orange">{snapshot.config.migration.status === "completed" ? "Abgeschlossen" : snapshot.config.migration.status === "pending" ? "Ausstehend" : "Unbekannt"}</span>
       </div>
-      <p class="helper">Quelle: {snapshot.config.migration.source ?? "Core State"}. Die alte Quelle wird nicht verändert; Rollback stellt das vorherige Core-State-Dokument wieder her.</p>
+      <p class="helper">Quelle: {snapshot.config.migration.source ? "Temporärer Migrationsvergleich" : "Core State"}. Die alte Quelle wird nicht verändert; Rollback stellt das vorherige Core-State-Dokument wieder her.</p>
       <div class="action-row">
         <button class="button secondary danger" type="button" disabled={pendingCommand !== null || !snapshot.capabilities.edit_settings} onclick={() => onCommand("wake.config.rollback")}>
           <RotateCcw size={16} /> Core-State-Migration zurücksetzen
