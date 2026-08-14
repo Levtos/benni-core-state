@@ -5,6 +5,8 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
 ## [Unreleased]
 
+## [0.11.3] - 2026-08-14
+
 ### Fixed
 - **Issue #52:** `private_time` wird ausschließlich aus dem sensor-basierten
   `media_activity_context`-Feed abgeleitet. Der alte `private_source`-Selector
