@@ -1261,7 +1261,6 @@ _MEDIA_FEED_BUCKETS = frozenset(
 _ACTIVITY_SOURCE_BIO = "internal:coordinator.bio_state"
 _ACTIVITY_SOURCE_PRESENCE = "internal:coordinator.presence_personal"
 _ACTIVITY_SOURCE_DAY_CONTEXT = "internal:coordinator.day_context"
-_ACTIVITY_SOURCE_PRIVATE = "configured:private_source"
 _ACTIVITY_SOURCE_HOMEOFFICE = "configured:homeoffice_ping"
 _ACTIVITY_SOURCE_HOUSEHOLD = "configured:household_source"
 _ACTIVITY_SOURCE_PC = "configured:pc_active"
@@ -1444,7 +1443,6 @@ def compute_activity_decision(
     presence_personal: str,
     day_context: str,
     homeoffice: bool,
-    private_active: bool,
     household_active: bool,
     media_activity: str | None,
     decision_timestamp: datetime,
@@ -1495,15 +1493,10 @@ def compute_activity_decision(
     # behavior: only an explicitly awake state opens the lower activity layer.
     lower_layer_open = bio in {BIO_AWAKE, BIO_SLEEP, BIO_WAKING}
     if lower_layer_open:
-        private_sources: list[str] = []
-        if private_active:
-            private_sources.append(_ACTIVITY_SOURCE_PRIVATE)
-        if feed_bucket == ACT_PRIVATE:
-            private_sources.append(media_activity_source)
-        if private_sources:
-            deduplicated = tuple(dict.fromkeys(private_sources))
-            if all(_source_is_fresh(source, source_quality) for source in deduplicated):
-                candidates[ACT_PRIVATE] = deduplicated
+        if feed_bucket == ACT_PRIVATE and _source_is_fresh(
+            media_activity_source, source_quality
+        ):
+            candidates[ACT_PRIVATE] = (media_activity_source,)
 
         if feed_bucket in {
             ACT_GAMING,
@@ -1631,7 +1624,6 @@ def compute_activity(
     day_context: str,
     day_state: str,
     homeoffice: bool,
-    private_active: bool,
     household_active: bool,
     media_activity: str | None = None,
     pc_active: bool = False,
@@ -1648,7 +1640,6 @@ def compute_activity(
         presence_personal=presence_personal,
         day_context=day_context,
         homeoffice=homeoffice,
-        private_active=private_active,
         household_active=household_active,
         media_activity=media_activity,
         decision_timestamp=datetime.now(timezone.utc),

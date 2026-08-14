@@ -95,6 +95,7 @@ _seed_ha_runtime_stubs()
 
 from custom_components.benni_core_state.coordinator import (  # noqa: E402
     _parse_iso,
+    _private_source_diagnostic,
     _wake_interaction_reference_start,
 )
 
@@ -144,3 +145,18 @@ def test_wake_reference_uses_current_provisional_edge():
         sleep_start=old_sleep,
         provisional_start=provisional,
     ) == provisional
+
+
+def test_legacy_private_source_is_ignored_and_points_to_media_feed():
+    diagnostic = _private_source_diagnostic(
+        configured_entity_id="binary_sensor.stash_private_time",
+        feed_source="sensor.system_benni_media_state_activity_context",
+    )
+
+    assert diagnostic == {
+        "status": "deprecated_ignored",
+        "configured_entity": "binary_sensor.stash_private_time",
+        "used_for_activity": False,
+        "replacement": "sensor.system_benni_media_state_activity_context",
+        "reason": "private_time_uses_media_activity_context_feed",
+    }

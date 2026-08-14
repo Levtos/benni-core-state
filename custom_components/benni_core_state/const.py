@@ -56,6 +56,8 @@ CONF_PS5_ACTIVE = "ps5_active"
 CONF_COFFEE_ACTIVE = "coffee_active"
 CONF_DOOR_WAKE = "door_wake"
 CONF_MEDIA_CONTEXT = "media_context"
+# Deprecated legacy Config-Entry key. It remains readable for compatibility and
+# diagnosis, but is neither selectable nor read as an Activity-State input.
 CONF_PRIVATE_SOURCE = "private_source"
 CONF_HOMEOFFICE_PING = "homeoffice_ping"
 CONF_HOLIDAY_SENSOR = "holiday_sensor"

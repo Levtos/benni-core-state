@@ -31,6 +31,7 @@ from homeassistant.util import dt as dt_util
 
 from . import logic
 from .const import (
+    ACT_PRIVATE,
     ACTIVITY_HOLD_STRENGTH,
     BIO_AWAKE,
     BIO_PROVISIONAL_SLEEP,
@@ -208,7 +209,7 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
             CONF_PROXIMITY_DISTANCE, CONF_PROXIMITY_DIRECTION,
             CONF_WAKE_NEXT, CONF_WAKE_NEEDED, CONF_WAKE_STATE, CONF_HOLIDAY_ACTIVE,
             CONF_PC_ACTIVE, CONF_PS5_ACTIVE, CONF_COFFEE_ACTIVE, CONF_DOOR_WAKE,
-            CONF_MEDIA_CONTEXT, CONF_PRIVATE_SOURCE, CONF_HOMEOFFICE_PING,
+            CONF_MEDIA_CONTEXT, CONF_HOMEOFFICE_PING,
             CONF_HOLIDAY_SENSOR, CONF_HOUSEHOLD_SOURCE,
             # Activity v2 (PR2 / FLEET-256): der media_state-Feed treibt die
             # Media-Aktivität; entertainment/gaming_platform/media_device bleiben
@@ -896,10 +897,8 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
         )
 
         media_ctx, _, _ = self._read_entity(CONF_MEDIA_CONTEXT)
-        private_raw, _, _ = self._read_entity(CONF_PRIVATE_SOURCE)
         homeoffice_raw, _, _ = self._read_entity(CONF_HOMEOFFICE_PING)
         pc_raw, _, _ = self._read_entity(CONF_PC_ACTIVE)
-        private_active = _state_is_true(private_raw)
         homeoffice = _state_is_true(homeoffice_raw)
         pc_active = _state_is_true(pc_raw)
         # Activity decision: the Media-State entity is a read-only input feed;
@@ -911,10 +910,11 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
         feed_source = self._entity_id(CONF_MEDIA_ACTIVITY_CONTEXT) or (
             "unbound:media_state.activity_context"
         )
+        private_source_diagnostic = _private_source_diagnostic(
+            configured_entity_id=self._entity_id(CONF_PRIVATE_SOURCE),
+            feed_source=feed_source,
+        )
         activity_source_status = {
-            "configured:private_source": _activity_source_quality(
-                private_raw, self._entity_id(CONF_PRIVATE_SOURCE)
-            ),
             "configured:homeoffice_ping": _activity_source_quality(
                 homeoffice_raw, self._entity_id(CONF_HOMEOFFICE_PING)
             ),
@@ -930,7 +930,6 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
             presence_personal=presence_personal,
             day_context=day_context,
             homeoffice=homeoffice,
-            private_active=private_active,
             household_active=external_occupied,
             media_activity=feed_state,
             decision_timestamp=now,
@@ -1079,7 +1078,10 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
                 "entertainment_active": entertainment_active,
                 "music_active": media_music_active,
                 "pc_active": pc_active,
-                "private": private_active,
+                # Compatibility projection of the canonical winner; this is
+                # no longer a raw private-source signal.
+                "private": activity == ACT_PRIVATE,
+                "private_source_diagnostic": private_source_diagnostic,
                 "household": external_occupied,
                 "homeoffice": homeoffice,
                 "activity_reason": activity_reason,
@@ -1261,6 +1263,27 @@ def _activity_source_quality(value: str | None, entity_id: str | None) -> str:
     if normalized == "unknown":
         return "unknown"
     return "fresh"
+
+
+def _private_source_diagnostic(
+    *, configured_entity_id: str | None, feed_source: str
+) -> dict[str, Any]:
+    """Explain the legacy private source without reading its entity state."""
+    if not configured_entity_id:
+        return {
+            "status": "not_configured",
+            "configured_entity": None,
+            "used_for_activity": False,
+            "replacement": feed_source,
+            "reason": "private_time_uses_media_activity_context_feed",
+        }
+    return {
+        "status": "deprecated_ignored",
+        "configured_entity": configured_entity_id,
+        "used_for_activity": False,
+        "replacement": feed_source,
+        "reason": "private_time_uses_media_activity_context_feed",
+    }
 
 
 def _bio_transition_reason(

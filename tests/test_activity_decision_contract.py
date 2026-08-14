@@ -43,7 +43,6 @@ def _decision(**overrides):
         "presence_personal": PERS_HOME,
         "day_context": DC_WERKTAG,
         "homeoffice": False,
-        "private_active": False,
         "household_active": False,
         "media_activity": None,
         "decision_timestamp": NOW,
@@ -80,7 +79,6 @@ def test_activity_decision_has_no_completed_core_state_input():
 def test_sleep_and_waking_suppress_lower_candidates():
     sleep = _decision(
         bio=BIO_SLEEP,
-        private_active=True,
         media_activity="gaming",
         media_activity_quality="fresh",
         homeoffice=True,
@@ -89,7 +87,6 @@ def test_sleep_and_waking_suppress_lower_candidates():
     )
     waking = _decision(
         bio=BIO_WAKING,
-        private_active=True,
         media_activity="gaming",
         media_activity_quality="fresh",
         homeoffice=True,
@@ -98,7 +95,6 @@ def test_sleep_and_waking_suppress_lower_candidates():
     )
     assert sleep.winner == ACT_SLEEP
     assert waking.winner == ACT_WAKING
-    assert ACT_PRIVATE in sleep.suppressed_candidates
     assert ACT_GAMING in waking.suppressed_candidates
 
 
@@ -108,8 +104,7 @@ def test_sleep_and_waking_suppress_lower_candidates():
         (
             ACT_PRIVATE,
             {
-                "private_active": True,
-                "media_activity": "gaming",
+                "media_activity": "private_time",
                 "media_activity_quality": "fresh",
             },
         ),
@@ -161,10 +156,9 @@ def test_each_activity_bucket_uses_the_canonical_precedence(expected, overrides)
     assert _decision(**overrides).winner == expected
 
 
-def test_multiple_candidates_are_returned_in_precedence_order():
+def test_private_time_can_only_come_from_media_feed():
     decision = _decision(
-        private_active=True,
-        media_activity="music",
+        media_activity="private_time",
         media_activity_quality="fresh",
         homeoffice=True,
         household_active=True,
@@ -172,8 +166,26 @@ def test_multiple_candidates_are_returned_in_precedence_order():
     )
 
     assert decision.winner == ACT_PRIVATE
+    assert decision.input_sources[ACT_PRIVATE] == (
+        "sensor.system_benni_media_state_activity_context",
+    )
+    assert all(
+        "private_source" not in source
+        for source in decision.input_sources[ACT_PRIVATE]
+    )
+
+
+def test_multiple_candidates_are_returned_in_precedence_order():
+    decision = _decision(
+        media_activity="music",
+        media_activity_quality="fresh",
+        homeoffice=True,
+        household_active=True,
+        pc_active=True,
+    )
+
+    assert decision.winner == ACT_MUSIC
     assert decision.valid_candidates == (
-        ACT_PRIVATE,
         ACT_MUSIC,
         ACT_WORK_HOME,
         ACT_HOUSEHOLD,
@@ -261,7 +273,6 @@ def test_activity_decision_is_recomputed_after_restart_and_not_persisted():
         presence_personal=PERS_HOME,
         day_context=DC_WERKTAG,
         homeoffice=False,
-        private_active=False,
         household_active=False,
         media_activity="music",
         media_activity_quality="fresh",

@@ -76,6 +76,12 @@ Consumer-Cutovers, Allowlisten, Releases und Live-Prüfungen sind nicht Teil von
 #29. Das Inventar liegt separat in
 [`2026-08-07-activity-state-consumer-inventory.md`](2026-08-07-activity-state-consumer-inventory.md).
 
+Die Core-State-Konfiguration exponiert für `private_time` ausschließlich den
+sensor-basierten `media_activity_context`-Feed. Der frühere
+`private_source`-Config-Key bleibt für das sichere Laden alter Config Entries
+erhalten, wird aber weder als Selector angeboten noch als Entity gelesen; eine
+vorhandene Bindung wird als `deprecated_ignored` diagnostiziert.
+
 ## Quellen
 
 - [Issue #21](https://github.com/Levtos/benni-core-state/issues/21)
