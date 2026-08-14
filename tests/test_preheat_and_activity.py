@@ -87,7 +87,6 @@ def _activity(**over):
         day_context=DC_WERKTAG,
         day_state=DAY_AFTERNOON,
         homeoffice=False,
-        private_active=False,
         household_active=False,
         media_activity=None,
         pc_active=False,
@@ -148,12 +147,12 @@ def test_media_bucket_from_feed_projection():
 # --- priority interleaving ------------------------------------------------
 # Der Feed ist EIN-wertig (private_time > gaming > entertainment > music wird in
 # media_state entschieden). Auf Core-Ebene wird nur die Media-Hälfte gegen die
-# lokalen Buckets (private_active-Flag, work_home, household, pc_active)
+# dem Feed-Bucket, work_home, household und pc_active)
 # arbitriert — in genau dieser Reihenfolge.
 
 
-def test_local_private_flag_beats_feed_gaming():
-    assert _activity(private_active=True, media_activity="gaming", pc_active=True) == ACT_PRIVATE
+def test_feed_private_beats_other_activity():
+    assert _activity(media_activity="private_time", pc_active=True) == ACT_PRIVATE
 
 
 def test_feed_gaming_beats_work_home():
@@ -230,7 +229,7 @@ def test_work_home_beats_pc_active():
 
 
 def test_private_beats_work():
-    assert _activity(private_active=True, homeoffice=True) == ACT_PRIVATE
+    assert _activity(media_activity="private_time", homeoffice=True) == ACT_PRIVATE
 
 
 # --- household / idle -----------------------------------------------------

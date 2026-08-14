@@ -30,7 +30,7 @@
           "coffee_active": "Coffee machine active",
           "door_wake": "Entry door wake signal",
           "media_context": "Media context",
-          "private_source": "Private mode source",
+          "media_activity_context": "Media activity context (sensor feed)",
           "homeoffice_ping": "Homeoffice ping",
           "holiday_sensor": "Holiday / vacation",
           "household_source": "Household occupancy (guests etc.)"
@@ -93,7 +93,7 @@
           "coffee_active": "Coffee machine active",
           "door_wake": "Entry door wake signal",
           "media_context": "Media context",
-          "private_source": "Private mode source",
+          "media_activity_context": "Media activity context (sensor feed)",
           "homeoffice_ping": "Homeoffice ping",
           "holiday_sensor": "Holiday / vacation",
           "household_source": "Household occupancy"

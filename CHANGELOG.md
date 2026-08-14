@@ -3,6 +3,14 @@
 Alle nennenswerten Änderungen an dieser Integration. Neuester Eintrag oben.
 Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+- **Issue #52:** `private_time` wird ausschließlich aus dem sensor-basierten
+  `media_activity_context`-Feed abgeleitet. Der alte `private_source`-Selector
+  und sein direkter Binary-/Boolean-State-Read sind entfernt; bestehende alte
+  Bindungen laden kompatibel, werden ignoriert und als veraltet diagnostiziert.
+
 ## [0.10.1] - 2026-07-08
 
 ### Added

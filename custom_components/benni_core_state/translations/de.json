@@ -30,7 +30,7 @@
           "coffee_active": "Kaffeemaschine aktiv",
           "door_wake": "Eingangstür-Wake-Signal",
           "media_context": "Media-Context",
-          "private_source": "Privat-Modus Quelle",
+          "media_activity_context": "Media-Activity-Kontext (Sensor-Feed)",
           "homeoffice_ping": "Homeoffice-Ping",
           "holiday_sensor": "Feiertag / Urlaub",
           "household_source": "Haushalt belegt (Gäste etc.)"
@@ -93,7 +93,7 @@
           "coffee_active": "Kaffeemaschine aktiv",
           "door_wake": "Eingangstür-Wake-Signal",
           "media_context": "Media-Context",
-          "private_source": "Privat-Modus Quelle",
+          "media_activity_context": "Media-Activity-Kontext (Sensor-Feed)",
           "homeoffice_ping": "Homeoffice-Ping",
           "holiday_sensor": "Feiertag / Urlaub",
           "household_source": "Haushalt belegt"
