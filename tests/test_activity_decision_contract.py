@@ -284,3 +284,17 @@ def test_activity_decision_is_recomputed_after_restart_and_not_persisted():
     stored = PersistentState().to_dict()
     assert "activity_state" not in stored
     assert "activity_decision" not in stored
+
+
+def test_media_feed_uses_last_updated_for_stable_owner_state():
+    decision = _decision(
+        media_activity="gaming",
+        media_activity_last_changed=NOW
+        - timedelta(seconds=DEFAULT_ACTIVITY_FEED_FRESHNESS_SECONDS + 1),
+        media_activity_last_updated=NOW,
+    )
+
+    assert decision.winner == ACT_GAMING
+    feed = decision.freshness["sensor.system_benni_media_state_activity_context"]
+    assert feed["status"] == "fresh"
+    assert feed["updated_at"] == NOW.isoformat()

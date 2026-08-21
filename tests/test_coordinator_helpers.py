@@ -94,6 +94,7 @@ def _seed_ha_runtime_stubs() -> None:
 _seed_ha_runtime_stubs()
 
 from custom_components.benni_core_state.coordinator import (  # noqa: E402
+    BenniCoreStateCoordinator,
     _parse_iso,
     _private_source_diagnostic,
     _wake_interaction_reference_start,
@@ -160,3 +161,29 @@ def test_legacy_private_source_is_ignored_and_points_to_media_feed():
         "replacement": "sensor.system_benni_media_state_activity_context",
         "reason": "private_time_uses_media_activity_context_feed",
     }
+
+
+def test_activity_feed_read_path_uses_last_updated_when_requested():
+    changed = datetime(2026, 7, 6, 19, 0, tzinfo=timezone.utc)
+    updated = datetime(2026, 7, 6, 19, 5, tzinfo=timezone.utc)
+
+    class State:
+        state = "gaming"
+        last_changed = changed
+        last_updated = updated
+        attributes = {}
+
+    class States:
+        def get(self, entity_id):
+            assert entity_id == "sensor.media_activity"
+            return State()
+
+    coordinator = object.__new__(BenniCoreStateCoordinator)
+    coordinator.hass = types.SimpleNamespace(states=States())
+    coordinator._entity_id = lambda _key: "sensor.media_activity"
+
+    _, timestamp, _ = coordinator._read_entity(
+        "media_activity_context", use_last_updated=True
+    )
+
+    assert timestamp == updated

@@ -1381,6 +1381,7 @@ def _media_feed_status(
     media_activity_freshness: str | None,
     media_activity_degraded: bool | str | None,
     media_activity_last_changed: datetime | None,
+    media_activity_last_updated: datetime | None,
     decision_timestamp: datetime,
     freshness_s: int,
 ) -> tuple[str, str | None, dict[str, Any]]:
@@ -1409,20 +1410,23 @@ def _media_feed_status(
         if explicit_bad is not None:
             status = explicit_bad
             reason = f"media_feed_{explicit_bad}"
-        elif media_activity_last_changed is not None:
-            age = _age_seconds(media_activity_last_changed, decision_timestamp)
-            status = "stale" if age is not None and age > freshness_s else "fresh"
-            reason = "media_feed_age_exceeded" if status == "stale" else None
-        elif explicit_quality == "fresh" or explicit_freshness == "fresh":
-            status = "fresh"
-            reason = None
         else:
-            status = "unknown"
-            reason = "media_feed_freshness_missing"
+            feed_timestamp = media_activity_last_updated or media_activity_last_changed
+            if feed_timestamp is not None:
+                age = _age_seconds(feed_timestamp, decision_timestamp)
+                status = "stale" if age is not None and age > freshness_s else "fresh"
+                reason = "media_feed_age_exceeded" if status == "stale" else None
+            elif explicit_quality == "fresh" or explicit_freshness == "fresh":
+                status = "fresh"
+                reason = None
+            else:
+                status = "unknown"
+                reason = "media_feed_freshness_missing"
 
+    feed_timestamp = media_activity_last_updated or media_activity_last_changed
     return status, reason, _freshness_entry(
         status=status,
-        updated_at=media_activity_last_changed,
+        updated_at=feed_timestamp,
         now=decision_timestamp,
         max_age_seconds=freshness_s,
         reason=reason,
@@ -1451,6 +1455,7 @@ def compute_activity_decision(
     media_activity_freshness: str | None = None,
     media_activity_degraded: bool | str | None = None,
     media_activity_last_changed: datetime | None = None,
+    media_activity_last_updated: datetime | None = None,
     media_activity_source: str = _ACTIVITY_SOURCE_MEDIA,
     media_activity_freshness_s: int = DEFAULT_ACTIVITY_FEED_FRESHNESS_SECONDS,
     source_status: Mapping[str, str | None] | None = None,
@@ -1470,6 +1475,7 @@ def compute_activity_decision(
         media_activity_freshness=media_activity_freshness,
         media_activity_degraded=media_activity_degraded,
         media_activity_last_changed=media_activity_last_changed,
+        media_activity_last_updated=media_activity_last_updated,
         decision_timestamp=decision_timestamp,
         freshness_s=media_activity_freshness_s,
     )
