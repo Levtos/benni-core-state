@@ -468,14 +468,17 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
 
     # ------------------------------------------------------------------ read
 
-    def _read_entity(self, key: str) -> tuple[str | None, datetime | None, dict[str, Any]]:
+    def _read_entity(
+        self, key: str, *, use_last_updated: bool = False
+    ) -> tuple[str | None, datetime | None, dict[str, Any]]:
         eid = self._entity_id(key)
         if not eid:
             return None, None, {}
         state = self.hass.states.get(eid)
         if state is None:
             return None, None, {}
-        return state.state, state.last_changed, dict(state.attributes)
+        timestamp = state.last_updated if use_last_updated else state.last_changed
+        return state.state, timestamp, dict(state.attributes)
 
     def _read_float(self, key: str) -> float | None:
         val, _, _ = self._read_entity(key)
@@ -904,8 +907,8 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
         # Activity decision: the Media-State entity is a read-only input feed;
         # Core State owns the global precedence and records feed age/quality
         # before allowing a Media candidate to win.
-        feed_state, feed_last_changed, feed_attrs = self._read_entity(
-            CONF_MEDIA_ACTIVITY_CONTEXT
+        feed_state, feed_last_updated, feed_attrs = self._read_entity(
+            CONF_MEDIA_ACTIVITY_CONTEXT, use_last_updated=True
         )
         feed_source = self._entity_id(CONF_MEDIA_ACTIVITY_CONTEXT) or (
             "unbound:media_state.activity_context"
@@ -941,7 +944,7 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
                 feed_attrs.get("freshness") or feed_attrs.get("freshness_status")
             ),
             media_activity_degraded=feed_attrs.get("degraded"),
-            media_activity_last_changed=feed_last_changed,
+            media_activity_last_updated=feed_last_updated,
             media_activity_source=feed_source,
             media_activity_freshness_s=DEFAULT_ACTIVITY_FEED_FRESHNESS_SECONDS,
             source_status=activity_source_status,

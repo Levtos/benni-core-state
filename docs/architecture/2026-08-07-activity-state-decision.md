@@ -39,8 +39,11 @@ Das owner-lokale Attribut `activity_decision` enthält:
 Der aktuelle Media-State-Feed besitzt noch kein eigenes Quality-Attribut. Core
 State akzeptiert einen bekannten Feedwert deshalb nur, wenn optionale
 `quality`/`freshness`/`degraded`-Marker ihn nicht ablehnen und der HA-
-`last_changed`-Zeitpunkt höchstens 1.800 Sekunden alt ist. Ein fehlender
-Zeitstempel ohne explizites `fresh` gilt als `unknown`. `unknown`,
+`last_updated`-Zeitpunkt höchstens 1.800 Sekunden alt ist. Ein fehlender
+Zeitstempel ohne explizites `fresh` gilt als `unknown`. `last_changed` allein
+ist für einen stabilen Feedwert keine Freshness-Evidence, weil Attribute oder
+Owner-Quality aktualisiert werden können, ohne dass sich der State-String
+ändert. `unknown`,
 `unavailable`, `stale` und `degraded` können keinen Media-Kandidaten gewinnen.
 
 Ein gültiger lokaler Kandidat darf trotz eines degradierten Media-Feeds gewinnen;
