@@ -245,11 +245,12 @@ Konsumenten (Automationen, YAML in `einhornzentrale`) umgestellt werden.
   (s. o.).
 * **Keine Storage-Migration**: der alte Toolbox-Bio/Preheat/Transition-Zustand
   wird nicht übernommen; die Shadow-Instanz startet mit Default-`sleep`.
-* **Logik-Drift zur alten Standalone-Repo**: das frühere `benni_context`-Repo
+* **Historische Logik-Drift zur alten Standalone-Repo**: das frühere `benni_context`-Repo
   enthielt eine ältere Logikvariante (z. B. PC-aus-Sleep → `waking`,
   `compute_bio_state` ohne `day_state`). Übernommen wurde der **Toolbox-Ist-Stand**
-  (PC-aus-Sleep in Nicht-Nacht-Phase → `awake`; Wake-Indizien nachts gegated;
-  `activity = sleep/waking` spiegelt Bio).
+  (damals PC-aus-Sleep in Nicht-Nacht-Phase → `awake`; Wake-Indizien nachts
+  gegated; `activity = sleep/waking` spiegelt Bio). Der PC bleibt heute ein
+  Activity-State-Eingang, ist aber kein Bio-Wake-Trigger mehr.
 * **Fachlicher Lastenheft-Audit** gegen *Day State*, *Day Context* und
   *Context State* ist **nicht** Teil dieser Extraktion und folgt separat.
 

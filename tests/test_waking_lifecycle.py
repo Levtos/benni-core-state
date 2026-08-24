@@ -105,11 +105,11 @@ def test_day_phase_change_alone_does_not_end_waking():
     assert state == BIO_WAKING
 
 
-def test_stale_level_signal_is_ignored_during_waking():
+def test_fresh_pc_signal_is_ignored_during_waking():
     sleep_start = NOW - timedelta(hours=6)
     indicators = {**NO_INDICATORS, "pc": True}
     active_since = {key: None for key in NO_INDICATORS}
-    active_since["pc"] = sleep_start - timedelta(minutes=1)
+    active_since["pc"] = NOW - timedelta(seconds=1)
 
     state, _, _ = _compute(
         BIO_WAKING,
@@ -122,11 +122,11 @@ def test_stale_level_signal_is_ignored_during_waking():
     assert state == BIO_WAKING
 
 
-def test_signal_active_before_provisional_sleep_is_ignored():
+def test_fresh_pc_signal_is_ignored_during_provisional_sleep():
     provisional_start = NOW - timedelta(minutes=5)
     indicators = {**NO_INDICATORS, "pc": True}
     active_since = {key: None for key in NO_INDICATORS}
-    active_since["pc"] = provisional_start - timedelta(seconds=1)
+    active_since["pc"] = NOW - timedelta(seconds=1)
 
     state, _, _ = _compute(
         BIO_PROVISIONAL_SLEEP,
@@ -144,7 +144,7 @@ def test_wake_interaction_diagnoses_freshness_strength_and_priority():
     indicators = {**NO_INDICATORS, "coffee": True, "pc": True}
     active_since = {key: None for key in NO_INDICATORS}
     active_since["coffee"] = NOW - timedelta(minutes=1)
-    active_since["pc"] = reference - timedelta(seconds=1)
+    active_since["pc"] = NOW - timedelta(seconds=1)
 
     decision = regular_wake_interaction_decision(
         indicators=indicators,
@@ -159,11 +159,31 @@ def test_wake_interaction_diagnoses_freshness_strength_and_priority():
     assert decision.priority == 4
     assert decision.freshness == "fresh"
     assert decision.valid_candidates == ("coffee",)
-    assert decision.rejected_candidates == ("pc",)
+    assert decision.rejected_candidates == ()
     attrs = decision.as_attributes()
     assert attrs["signal_strength"] == "strong"
     assert attrs["priority"] == 4
-    assert attrs["rejected_candidates"] == ["pc"]
+    assert attrs["rejected_candidates"] == []
+
+
+def test_pc_does_not_mask_ps5_wake_signal():
+    reference = NOW - timedelta(minutes=5)
+    indicators = {**NO_INDICATORS, "pc": True, "ps5": True}
+    active_since = {key: None for key in NO_INDICATORS}
+    active_since["pc"] = NOW - timedelta(seconds=2)
+    active_since["ps5"] = NOW - timedelta(seconds=1)
+
+    decision = regular_wake_interaction_decision(
+        indicators=indicators,
+        day_state=DAY_FORENOON,
+        indicator_active_since=active_since,
+        sleep_started=reference,
+    )
+
+    assert decision.accepted is True
+    assert decision.source == "ps5"
+    assert decision.signal_strength == "soft"
+    assert decision.priority == 1
 
 
 def test_wake_interaction_exposes_rejection_reason_for_stale_signal():

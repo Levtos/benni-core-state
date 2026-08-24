@@ -5,6 +5,13 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
 ## [Unreleased]
 
+## [0.11.5] - 2026-08-24
+
+### Fixed
+- PC activity remains observable for Activity State, but is no longer accepted
+  as a Bio-State wake trigger from `sleep`, `provisional_sleep`, or `waking`
+  ([#57](https://github.com/Levtos/benni-core-state/issues/57)).
+
 ## [0.11.3] - 2026-08-14
 
 ### Fixed
