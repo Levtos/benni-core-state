@@ -57,18 +57,15 @@ def test_strong_indicator_promotes_waking_to_awake_with_timestamp():
     assert awake_ts == NOW
 
 
-def test_pc_from_sleep_promotes_to_awake_in_allowed_phase():
-    """IST-Stand: ein erlaubtes Wake-Indiz (PC) hebt aus sleep direkt auf awake.
-
-    (Abweichend von der alten Standalone-Logik, die hier nur 'waking' lieferte.)
-    """
+def test_pc_from_sleep_does_not_promote_to_awake():
+    """PC activity remains observable but is not a Bio wake trigger."""
     state, _, awake_ts = _bio(
         BIO_SLEEP,
         indicators={**NO_IND, "pc": True},
         prev_sleep_start=NOW - timedelta(hours=5),
     )
-    assert state == BIO_AWAKE
-    assert awake_ts == NOW
+    assert state == BIO_SLEEP
+    assert awake_ts is None
 
 
 def test_manual_sleep_ignores_wake_indicators_already_active_before_sleep():
@@ -102,7 +99,7 @@ def test_indicator_that_turns_on_after_sleep_can_wake():
 
 
 def test_wake_indicators_suppressed_at_night():
-    """Nachts (early_night/late_night) zählen PC/PS5/Kaffee/Tür nicht als Wake."""
+    """Nachts (early_night/late_night) zählen PS5/Kaffee/Tür nicht als Wake."""
     state, _, _ = _bio(
         BIO_SLEEP, indicators={**NO_IND, "coffee": True}, day_state=DAY_EARLY_NIGHT
     )
@@ -150,8 +147,8 @@ def test_early_morning_stale_indicator_does_not_break_sleep():
     assert awake_ts is None
 
 
-def test_forenoon_pc_indicator_breaks_sleep_without_wake_needed():
-    """Ein frisch aktiver PC ist ebenfalls ein Wake-Signal."""
+def test_forenoon_fresh_pc_indicator_does_not_break_sleep():
+    """Auch ein frisch aktiver PC ist kein Wake-Signal."""
     state, _, awake_ts = _bio(
         BIO_SLEEP,
         indicators={**NO_IND, "pc": True},
@@ -162,8 +159,8 @@ def test_forenoon_pc_indicator_breaks_sleep_without_wake_needed():
             "pc": NOW - timedelta(minutes=1),
         },
     )
-    assert state == BIO_AWAKE
-    assert awake_ts == NOW
+    assert state == BIO_SLEEP
+    assert awake_ts is None
 
 
 def test_early_morning_indicator_breaks_sleep_when_wake_needed():

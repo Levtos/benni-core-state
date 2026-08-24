@@ -22,7 +22,7 @@ actuation and cutover remain separate.
 | --- | --- | --- | --- | --- | --- |
 | Coffee | `coffee_active` | strong | active after the current sleep/provisional reference | ignored in early/late night | completes `sleep`, `provisional_sleep` or `waking` to `awake` |
 | Door | `door_wake` | strong | active after the current sleep/provisional reference | ignored in early/late night | completes to `awake` |
-| PC | `pc_active` | soft | active after the current sleep/provisional reference | ignored in early/late night | completes to `awake` |
+| PC | `pc_active` | collected only | none | not a Phase-1 wake signal | no Bio effect |
 | PS5 | `ps5_active` | soft | active after the current sleep/provisional reference | ignored in early/late night | completes to `awake` |
 | Home-office ping | `homeoffice_ping` | collected only | none | not a Phase-1 wake signal | no Bio effect |
 | Presence departure | Core-State Presence | physical invariant | definite `abwesend` | no day-phase gate | completes any non-awake Bio state to `awake` |
@@ -32,6 +32,11 @@ actuation and cutover remain separate.
 Strong and soft retain the existing ordering vocabulary, but both are valid
 completion signals once their existing freshness and phase gates pass. Repeated
 level signals do not create another transition after `awake`.
+
+PC activity remains available to Activity State and owner-local diagnostics, but
+is deliberately excluded from the Bio wake decision in every phase and lifecycle
+state. This supersedes the PC portion of the earlier Phase-1 contract; PS5 keeps
+its existing soft-wake behavior.
 
 ## Diagnostics
 
@@ -43,7 +48,7 @@ calculated timeout timestamp and one of the bounded transition reasons:
 
 The nested `wake_interaction` diagnostic is a pure decision projection. It
 reports the selected source, `signal_strength` (`strong`/`soft`), deterministic
-priority (coffee 4, door 3, PC 2, PS5 1), freshness, the current
+priority (coffee 4, door 3, PS5 1), freshness, the current
 sleep/provisional reference, valid and suppressed candidates, and a bounded
 `rejection_reason` such as `no_active_signal`, `day_phase_blocked`, or
 `before_reference`. If a source has no usable active edge, its freshness is

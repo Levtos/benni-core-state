@@ -746,7 +746,6 @@ def compute_preheat(
 _WAKE_INTERACTION_CANDIDATES = (
     ("coffee", "strong", 4),
     ("door", "strong", 3),
-    ("pc", "soft", 2),
     ("ps5", "soft", 1),
 )
 _WAKE_ALLOWED_DAY_STATES = (
@@ -761,7 +760,7 @@ _WAKE_ALLOWED_DAY_STATES = (
 def wake_indicators_allowed(day_state: str | None) -> bool:
     """Return whether activity-based wake indicators may change Bio-State.
 
-    The reviewed Context State spec allows coffee/door/PC/PS5 wake indicators
+    The reviewed Context State spec allows coffee/door/PS5 wake indicators
     only in the non-night master phases. Missing day-state is treated
     conservatively: do not infer wake from activity noise.
     """
