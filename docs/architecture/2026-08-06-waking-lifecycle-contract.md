@@ -1,5 +1,12 @@
 # Core State: waking lifecycle and wake-input inventory
 
+> Historical Phase-1 inventory. Issue #59 supersedes the Night gate and source
+> classification with the binding
+> [behavioral PS -> S contract](2026-08-30-behavioral-ps-s-contract.md):
+> PC, active PS5, active Switch, coffee, shower/water heater, and entry-door
+> actions are strong phase-independent edges; window/patio actions remain
+> night-blocked and become eligible from `early_morning`.
+
 - Status: implemented for technical testing; no consumer cutover or live proof
 - Date: 2026-08-06
 - Tracking: [Levtos/benni-core-state#28](https://github.com/Levtos/benni-core-state/issues/28)

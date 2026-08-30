@@ -21,6 +21,17 @@ class PersistentState:
     last_awake_start: str | None = None
     last_provisional_sleep_start: str | None = None
     last_waking_start: str | None = None
+    # Issue #59: one explicit lifecycle reference per PS/S episode plus
+    # provenance for the most recent confirmed/inferred sleep transition.
+    sleep_reference_start: str | None = None
+    sleep_source: str | None = None
+    sleep_confirmed: bool | None = None
+    inferred_tv_off_at: str | None = None
+    # Restart-safe edge bookkeeping.  Active levels are never converted into
+    # fresh wake evidence merely because Home Assistant restarted.
+    observed_signal_states: dict[str, bool] = field(default_factory=dict)
+    indicator_active_since: dict[str, str | None] = field(default_factory=dict)
+    opening_states: dict[str, str] = field(default_factory=dict)
     minimum_sleep_minutes: int | None = None
     provisional_lead_minutes: int | None = None
     transition_state: str = "none"

@@ -5,6 +5,23 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
 ## [Unreleased]
 
+## [0.11.6] - 2026-08-30
+
+### Added
+- Behavioraler PS→S-Vertrag aus [#59](https://github.com/Levtos/benni-core-state/issues/59):
+  PS nur nachts bei TV-only, versionierte Sleep-Provenance, restart-feste
+  Wake-Flanken und Media-Apply-TV-Off-Evidence.
+- Starke Wake-Evidence für PC, aktive PS5/Switch, Kaffee, Dusche und
+  Eingangstür; Fenster-/Terrassentür-Flanken bleiben nachts blockiert.
+
+### Changed
+- Zehn Minuten kontinuierlich bestätigtes TV-Aus promoten PS zu unbestätigtem
+  `sleep_source=inferred_tv_off`; PS/inferred S folgen dem regulären Wake ohne
+  Mindestschlafverschiebung.
+- PS/S mit aktivem TV bleibt als tatsächliche Activity `entertainment`.
+- Der alte schedule-basierte PS-Eintritt ist nur noch historische
+  Planungsdiagnostik und erzeugt keinen Bio-Zustand mehr.
+
 ## [0.11.5] - 2026-08-24
 
 ### Fixed

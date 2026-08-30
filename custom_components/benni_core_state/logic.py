@@ -746,7 +746,11 @@ def compute_preheat(
 _WAKE_INTERACTION_CANDIDATES = (
     ("coffee", "strong", 4),
     ("door", "strong", 3),
-    ("ps5", "soft", 1),
+    ("shower", "strong", 2),
+    ("ps5", "strong", 1),
+    ("switch", "strong", 1),
+    ("pc", "strong", 1),
+    ("window", "conditional", 0),
 )
 _WAKE_ALLOWED_DAY_STATES = (
     DAY_EARLY_MORNING,
@@ -757,13 +761,15 @@ _WAKE_ALLOWED_DAY_STATES = (
     DAY_EVENING,
     DAY_LATE_EVENING,
 )
-def wake_indicators_allowed(day_state: str | None) -> bool:
-    """Return whether activity-based wake indicators may change Bio-State.
+def wake_indicators_allowed(day_state: str | None, source: str | None = None) -> bool:
+    """Return whether one wake source is admitted in the current phase.
 
-    The reviewed Context State spec allows coffee/door/PS5 wake indicators
-    only in the non-night master phases. Missing day-state is treated
-    conservatively: do not infer wake from activity noise.
+    Issue #59 makes PC, active consoles, coffee, shower and the entry door
+    time-independent strong evidence.  Only window actions keep the night
+    gate; a missing phase therefore rejects windows but not strong evidence.
     """
+    if source is not None and source != "window":
+        return True
     return day_state in _WAKE_ALLOWED_DAY_STATES
 
 
@@ -854,31 +860,17 @@ def regular_wake_interaction_decision(
             active_since=None,
         )
 
-    if not wake_indicators_allowed(day_state):
-        key, strength, priority = active_candidates[0]
-        return WakeInteractionDecision(
-            accepted=False,
-            source=key,
-            signal_strength=strength,
-            priority=priority,
-            freshness="phase_blocked",
-            rejection_reason="day_phase_blocked",
-            reference_start=sleep_started,
-            active_since=(
-                indicator_active_since.get(key)
-                if indicator_active_since is not None
-                else None
-            ),
-            rejected_candidates=tuple(key for key, _, _ in active_candidates),
-        )
-
     candidate_statuses = [
         (
             key,
             strength,
             priority,
-            _indicator_freshness(
-                key, indicators, indicator_active_since, sleep_started
+            (
+                _indicator_freshness(
+                    key, indicators, indicator_active_since, sleep_started
+                )
+                if wake_indicators_allowed(day_state, key)
+                else "phase_blocked"
             ),
         )
         for key, strength, priority in active_candidates
@@ -886,7 +878,7 @@ def regular_wake_interaction_decision(
     valid = [
         candidate
         for candidate in candidate_statuses
-        if candidate[3] in {"fresh", "unknown_reference", "unknown_timestamp"}
+        if candidate[3] == "fresh"
     ]
     rejected = [candidate for candidate in candidate_statuses if candidate not in valid]
     if not valid:
@@ -897,7 +889,11 @@ def regular_wake_interaction_decision(
             signal_strength=strength,
             priority=priority,
             freshness=freshness,
-            rejection_reason="before_reference",
+            rejection_reason=(
+                "day_phase_blocked"
+                if freshness == "phase_blocked"
+                else "before_reference"
+            ),
             reference_start=sleep_started,
             active_since=(
                 indicator_active_since.get(key)
@@ -913,7 +909,7 @@ def regular_wake_interaction_decision(
         source=key,
         signal_strength=strength,
         priority=priority,
-        freshness="fresh" if freshness == "fresh" else "unknown",
+        freshness=freshness,
         rejection_reason=None,
         reference_start=sleep_started,
         active_since=(
@@ -944,6 +940,60 @@ def regular_wake_interaction(
     ).accepted
 
 
+@dataclass(frozen=True)
+class ProvisionalSleepDecision:
+    """Explain the behavior-based awake -> provisional_sleep gate."""
+
+    accepted: bool
+    reason: str
+    rejected_inputs: tuple[str, ...] = ()
+
+    def as_attributes(self) -> dict[str, Any]:
+        return {
+            "accepted": self.accepted,
+            "reason": self.reason,
+            "rejected_inputs": list(self.rejected_inputs),
+        }
+
+
+def provisional_sleep_decision(
+    *,
+    previous_bio: str,
+    presence_personal: str,
+    day_state: str | None,
+    tv_active: bool | None,
+    pc_active: bool | None,
+    ps5_active: bool | None,
+    switch_active: bool | None,
+) -> ProvisionalSleepDecision:
+    """Issue #59's complete, fail-closed PS entry contract."""
+
+    rejected: list[str] = []
+    if previous_bio != BIO_AWAKE:
+        rejected.append("previous_bio")
+    if presence_personal != PERS_HOME:
+        rejected.append("presence")
+    if day_state not in {DAY_EARLY_NIGHT, DAY_LATE_NIGHT}:
+        rejected.append("day_phase")
+    inputs = {
+        "tv": tv_active,
+        "pc": pc_active,
+        "ps5": ps5_active,
+        "switch": switch_active,
+    }
+    rejected.extend(f"{key}_unusable" for key, value in inputs.items() if value is None)
+    if tv_active is not True:
+        rejected.append("tv_not_active")
+    for key, value in (("pc", pc_active), ("ps5", ps5_active), ("switch", switch_active)):
+        if value is True:
+            rejected.append(f"{key}_active")
+    return ProvisionalSleepDecision(
+        accepted=not rejected,
+        reason="behavioral_tv_only_night" if not rejected else "ps_entry_blocked",
+        rejected_inputs=tuple(dict.fromkeys(rejected)),
+    )
+
+
 def compute_bio_state(
     *,
     prev_state: str,
@@ -956,19 +1006,19 @@ def compute_bio_state(
     prev_awake_start: datetime | None,
     indicator_active_since: dict[str, datetime | None] | None = None,
     provisional_active: bool = False,
+    provisional_detected: bool = False,
+    inferred_sleep: bool = False,
     wake_due: bool | None = None,
     waking_started: datetime | None = None,
     waking_timeout_minutes: int = DEFAULT_WAKING_TIMEOUT_MINUTES,
     interaction_reference_start: datetime | None = None,
 ) -> tuple[str, datetime | None, datetime | None]:
-    """Return the Phase-1 Bio state without inferring sleep.
+    """Return the Issue #59 PS/S lifecycle state.
 
-    ``provisional_sleep`` is a protection state only. It never creates a
-    sleep-start timestamp and never satisfies minimum sleep. The internal
-    E/L/M/A contract may enter it from ``awake`` and may start ``waking``
-    from either confirmed ``sleep`` or ``provisional_sleep``.
-    ``wake_needed`` remains a disclosed compatibility fallback when
-    ``wake_due`` is not available.
+    ``provisional_active`` remains an accepted compatibility argument but no
+    longer creates PS: the old schedule-derived provisional path would violate
+    the issue's TV-only night gate.  ``provisional_detected`` is the explicit
+    behavior decision, while ``inferred_sleep`` is Apply-owned TV-off evidence.
     """
 
     sleep_start = prev_sleep_start
@@ -1001,6 +1051,8 @@ def compute_bio_state(
             return BIO_AWAKE, sleep_start, now
         if planned_wake:
             return BIO_WAKING, sleep_start, awake_start
+        if inferred_sleep:
+            return BIO_SLEEP, now, awake_start
         return BIO_PROVISIONAL_SLEEP, sleep_start, awake_start
 
     if prev_state == BIO_WAKING:
@@ -1015,7 +1067,7 @@ def compute_bio_state(
             return BIO_AWAKE, sleep_start, now
         return BIO_WAKING, sleep_start, awake_start
 
-    if provisional_active:
+    if provisional_detected:
         return BIO_PROVISIONAL_SLEEP, sleep_start, awake_start
 
     return BIO_AWAKE, sleep_start, awake_start or now
@@ -1263,6 +1315,7 @@ _ACTIVITY_SOURCE_DAY_CONTEXT = "internal:coordinator.day_context"
 _ACTIVITY_SOURCE_HOMEOFFICE = "configured:homeoffice_ping"
 _ACTIVITY_SOURCE_HOUSEHOLD = "configured:household_source"
 _ACTIVITY_SOURCE_PC = "configured:pc_active"
+_ACTIVITY_SOURCE_TV = "configured:tv_active"
 _ACTIVITY_SOURCE_MEDIA = "sensor.system_benni_media_state_activity_context"
 _ACTIVITY_SOURCE_FALLBACK = "internal:coordinator.activity_state.fallback"
 _ACTIVITY_QUALITY_ORDER = {
@@ -1450,6 +1503,7 @@ def compute_activity_decision(
     media_activity: str | None,
     decision_timestamp: datetime,
     pc_active: bool = False,
+    tv_active: bool = False,
     media_activity_quality: str | None = None,
     media_activity_freshness: str | None = None,
     media_activity_degraded: bool | str | None = None,
@@ -1487,8 +1541,12 @@ def compute_activity_decision(
     )
     candidates: dict[str, tuple[str, ...]] = {}
 
-    if bio == BIO_SLEEP:
+    sleep_context = bio in {BIO_SLEEP, BIO_PROVISIONAL_SLEEP}
+    tv_entertainment_during_sleep = sleep_context and tv_active
+    if sleep_context and not tv_entertainment_during_sleep:
         candidates[ACT_SLEEP] = (_ACTIVITY_SOURCE_BIO,)
+    elif tv_entertainment_during_sleep:
+        candidates[ACT_ENTERTAINMENT] = (_ACTIVITY_SOURCE_TV,)
     elif bio == BIO_WAKING:
         candidates[ACT_WAKING] = (_ACTIVITY_SOURCE_BIO,)
 
@@ -1496,14 +1554,19 @@ def compute_activity_decision(
     # currently observable lower candidates are retained for transparent
     # suppression diagnostics.  Other Bio values keep the historical safe
     # behavior: only an explicitly awake state opens the lower activity layer.
-    lower_layer_open = bio in {BIO_AWAKE, BIO_SLEEP, BIO_WAKING}
+    lower_layer_open = bio in {
+        BIO_AWAKE,
+        BIO_SLEEP,
+        BIO_PROVISIONAL_SLEEP,
+        BIO_WAKING,
+    }
     if lower_layer_open:
-        if feed_bucket == ACT_PRIVATE and _source_is_fresh(
+        if not sleep_context and feed_bucket == ACT_PRIVATE and _source_is_fresh(
             media_activity_source, source_quality
         ):
             candidates[ACT_PRIVATE] = (media_activity_source,)
 
-        if feed_bucket in {
+        if not sleep_context and feed_bucket in {
             ACT_GAMING,
             ACT_ENTERTAINMENT,
             ACT_MUSIC,

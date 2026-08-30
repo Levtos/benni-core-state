@@ -93,7 +93,18 @@ statt auf `unavailable` zu gehen.
   und **kein** Preheat.
 * **`coming_home`** entsteht nur aus echter Abwesenheit (vorheriger *realer*
   Presence-State war `abwesend`).
-* **Bio-State** ist die einzige Wahrheit für `sleep`, `provisional_sleep`, `waking` und `awake`. `provisional_sleep` ist nur der E/L/M/A-Schutzkorridor und zählt nie als bestätigter Schlaf. Der interne Wake-Plan startet `waking`; die erste reguläre Wachinteraktion oder spätestens ein restart-fester 30-Minuten-Timeout beendet `waking` zu `awake`. Das alte `wake_needed` bleibt nur bei degradiertem Sleep-Window als sichtbarer Kompatibilitätsfallback. Das Attribut `wake_interaction` erklärt Quelle, Signalstärke, Priorität, Freshness, Referenzzeitpunkt und Ablehnungsgrund.
+* **Bio-State** ist die einzige Wahrheit für `sleep`, `provisional_sleep`,
+  `waking` und `awake`. PS entsteht nur zuhause in `early_night` oder
+  `late_night` bei kanonisch aktivem TV und inaktivem PC/PS5/Switch.
+  Zehn kontinuierliche Minuten bestätigtes TV-Aus aus dem Media-Apply-Evidence-
+  Contract erzeugen unbestätigtes `sleep_source=inferred_tv_off`; manueller
+  Sleep bleibt `sleep_source=manual`, `sleep_confirmed=true`. Beide folgen
+  dem regulären Wake-Zeitpunkt, inferred S aktiviert keine Mindestschlaf-
+  Verschiebung. Starke frische Wake-Flanken sind PC, aktive PS5/Switch, Kaffee,
+  Dusche/Durchlauferhitzer und Eingangstür. Fenster-/Terrassentüraktionen sind
+  nachts blockiert und ab `early_morning` erlaubt. TV, Licht, Bewegung und
+  HomePods sind keine Wake-Signale. Details:
+  [Behavioral PS -> S contract](docs/architecture/2026-08-30-behavioral-ps-s-contract.md).
 * **Day-State** folgt neun kalender-/datumsermittelten Phasen. Keine Grenze,
   einschließlich `00:00`, `midday` oder `14:00`, ist dauerhaft fest. Zwischen
   Winter- und Sommersonnenwende wächst der gesamte Nicht-Nacht-Block mit einer
@@ -120,6 +131,9 @@ statt auf `unavailable` zu gehen.
   zulässig; unbekannte, nicht verfügbare, stale oder degraded Feedwerte können
   nie gewinnen und fallen deterministisch auf `idle` beziehungsweise eine
   niedrigere gültige lokale Aktivität zurück.
+  Als explizite Ausnahme bildet PS/S mit kanonisch aktivem TV die reale
+  `entertainment`-Aktivität ab; der Bio-Schlafkontext bleibt für Consumer
+  dennoch erhalten.
 
 ## Services
 
@@ -205,6 +219,9 @@ Eigener Storage-Key — **nicht** der alte Toolbox-Key:
 Restart-fest (fachlich identisch zum Ist-Stand):
 
 * `bio_state`, `last_sleep_start`, `last_provisional_sleep_start`, `last_waking_start`, `last_awake_start`
+* `sleep_reference_start`, `sleep_source`, `sleep_confirmed`,
+  `inferred_tv_off_at`
+* letzte beobachtete starke Signalpegel/-flanken und Opening-Master-Zustände
 * `minimum_sleep_minutes`, `provisional_lead_minutes`
 * `transition_state` + Startzeit
 * `preheat_active`, `preheat_source`, `preheat_started`
@@ -232,9 +249,10 @@ Der interne Wake-Planning-Shadow läuft nach #26 ebenfalls additiv parallel zum
 alten `ha_wake_planner`. Er nutzt die lokalen Kalender-/Zeitgrenzen und den
 kanonischen `day_state`, schaltet aber keinen Consumer um. Die Diagnose zeigt
 Ergebnis, Quelle, Quality/Freshness, Profil, Reason, Floor, Fenster und den
-Vergleichsstatus. Der separate Phase-1-Sleep-Window-Vertrag kombiniert diesen
-Plan mit E/L/M/A und dem manuellen Schlafbeginn. `inferred_sleep` bleibt
-weiterhin ausdrücklich außerhalb von Phase 1.
+Vergleichsstatus. Der historische Phase-1-Sleep-Window-Vertrag liefert
+weiterhin Planungsdiagnostik. Seit Issue #59 erzeugt jedoch ausschließlich der
+behaviorale TV-/Gerätevertrag PS und verifiziertes TV-Off die automatische
+PS→S-Promotion.
 
 Empfehlung: beide Sensorgruppen eine Weile nebeneinander beobachten, bevor
 Konsumenten (Automationen, YAML in `einhornzentrale`) umgestellt werden.
@@ -249,8 +267,10 @@ Konsumenten (Automationen, YAML in `einhornzentrale`) umgestellt werden.
   enthielt eine ältere Logikvariante (z. B. PC-aus-Sleep → `waking`,
   `compute_bio_state` ohne `day_state`). Übernommen wurde der **Toolbox-Ist-Stand**
   (damals PC-aus-Sleep in Nicht-Nacht-Phase → `awake`; Wake-Indizien nachts
-  gegated; `activity = sleep/waking` spiegelt Bio). Der PC bleibt heute ein
-  Activity-State-Eingang, ist aber kein Bio-Wake-Trigger mehr.
+  gegated; `activity = sleep/waking` spiegelt Bio). Der PC bleibt ein
+  Activity-State-Eingang. Issue #59 ersetzt den alten Wake-Teilvertrag: eine
+  frische kanonische PC-Aktivierungsflanke nach dem Sleep-Referenzzeitpunkt ist
+  ein starkes Bio-Wake-Signal.
 * **Fachlicher Lastenheft-Audit** gegen *Day State*, *Day Context* und
   *Context State* ist **nicht** Teil dieser Extraktion und folgt separat.
 

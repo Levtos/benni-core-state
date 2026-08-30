@@ -1,5 +1,9 @@
 # Core State: Entscheidungsdelta zur Fleet-Zielweg-Quelle
 
+> Historischer Entscheidungsstand. Die Abschnitte zu PS-Eintritt, inferred S
+> und Wake-Quellen werden durch den verbindlichen
+> [Issue-#59-Vertrag](2026-08-30-behavioral-ps-s-contract.md) ersetzt.
+
 **Stand:** 2026-08-04
 
 **Status:** Dokumentierter Entscheidungsstand für [Issue #21](https://github.com/Levtos/benni-core-state/issues/21); keine Umsetzung, kein Cutover und kein Live-Nachweis  
