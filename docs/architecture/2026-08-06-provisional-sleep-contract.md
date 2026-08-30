@@ -1,5 +1,11 @@
 # Core State: Phase-1 provisional-sleep contract
 
+> Historical Phase-1 contract. The schedule-derived PS entry described below
+> is superseded by the binding behavioral
+> [Issue #59 contract](2026-08-30-behavioral-ps-s-contract.md). The E/L/M/A
+> calculation remains available for planning diagnostics, but no longer creates
+> `provisional_sleep`.
+
 - Status: implemented for technical testing; no consumer cutover or live proof
 - Date: 2026-08-06
 - Tracking: [Levtos/benni-core-state#27](https://github.com/Levtos/benni-core-state/issues/27)

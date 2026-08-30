@@ -38,6 +38,7 @@ from .const import (
     BIO_SLEEP,
     BIO_WAKING,
     CONF_COFFEE_ACTIVE,
+    CONF_DOOR_LOCK,
     CONF_DOOR_WAKE,
     CONF_ENTERTAINMENT_ACTIVE,
     CONF_GAMING_PLATFORM,
@@ -62,6 +63,11 @@ from .const import (
     CONF_PROXIMITY_DIRECTION,
     CONF_PROXIMITY_DISTANCE,
     CONF_PS5_ACTIVE,
+    CONF_SHOWER_ACTIVE,
+    CONF_SLEEP_TV_EVIDENCE,
+    CONF_SWITCH_ACTIVE,
+    CONF_TV_ACTIVE,
+    CONF_OPENING_MASTER,
     CONF_SSID_SOURCE,
     CONF_TRACKER_FRESHNESS,
     CONF_TRANSITION_HOLD,
@@ -88,6 +94,7 @@ from .const import (
     PROFILE_PREFILL,
     PROFILE_SSIDS,
     STORAGE_VERSION,
+    SLEEP_DETECTION_CONTRACT_VERSION,
     UPDATE_INTERVAL,
     storage_key,
     WAKE_CONFIG_STORAGE_VERSION,
@@ -100,6 +107,10 @@ from .mapping import MAPPING_CONTRACT_VERSION, mapping_diagnostics
 from . import sleep_window, wake_config, wake_planning
 
 _LOGGER = logging.getLogger(__name__)
+
+_TRUE_STATES = frozenset({"on", "true", "home", "1", "yes", "active", "playing", "open"})
+_FALSE_STATES = frozenset({"off", "false", "not_home", "0", "no", "inactive", "idle", "standby", "closed"})
+_OPEN_STATES = frozenset({"open", "opened", "tilted", "on"})
 
 
 class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
@@ -208,7 +219,10 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
             CONF_WLAN_ELTERN_1, CONF_WLAN_ELTERN_2,
             CONF_PROXIMITY_DISTANCE, CONF_PROXIMITY_DIRECTION,
             CONF_WAKE_NEXT, CONF_WAKE_NEEDED, CONF_WAKE_STATE, CONF_HOLIDAY_ACTIVE,
-            CONF_PC_ACTIVE, CONF_PS5_ACTIVE, CONF_COFFEE_ACTIVE, CONF_DOOR_WAKE,
+            CONF_PC_ACTIVE, CONF_PS5_ACTIVE, CONF_SWITCH_ACTIVE,
+            CONF_COFFEE_ACTIVE, CONF_SHOWER_ACTIVE, CONF_DOOR_WAKE,
+            CONF_OPENING_MASTER, CONF_DOOR_LOCK, CONF_TV_ACTIVE,
+            CONF_SLEEP_TV_EVIDENCE,
             CONF_MEDIA_CONTEXT, CONF_HOMEOFFICE_PING,
             CONF_HOLIDAY_SENSOR, CONF_HOUSEHOLD_SOURCE,
             # Activity v2 (PR2 / FLEET-256): der media_state-Feed treibt die
@@ -314,6 +328,10 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
         self._persistent.bio_state = target
         if target == BIO_SLEEP:
             self._persistent.last_sleep_start = now_iso
+            self._persistent.sleep_reference_start = now_iso
+            self._persistent.sleep_source = "manual"
+            self._persistent.sleep_confirmed = True
+            self._persistent.inferred_tv_off_at = None
         elif target == BIO_AWAKE:
             self._persistent.last_awake_start = now_iso
         await self._async_save()
@@ -492,6 +510,91 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
     def _read_bool(self, key: str) -> bool:
         val, _, _ = self._read_entity(key)
         return _state_is_true(val)
+
+    def _read_activity(self, key: str) -> tuple[bool | None, str]:
+        """Read a canonical activity contract without collapsing bad data to off."""
+
+        value, _, attrs = self._read_entity(key)
+        if not self._entity_id(key) or value in (None, "", "unknown", "unavailable"):
+            return None, "unavailable" if value == "unavailable" else "unknown"
+        for attr in ("is_active", "active"):
+            if attr in attrs:
+                raw = attrs.get(attr)
+                if isinstance(raw, bool):
+                    return raw, "fresh"
+                normalized = str(raw).strip().lower()
+                if normalized in _TRUE_STATES:
+                    return True, "fresh"
+                if normalized in _FALSE_STATES:
+                    return False, "fresh"
+                return None, "unknown"
+        normalized = str(value).strip().lower()
+        if normalized in _TRUE_STATES:
+            return True, "fresh"
+        if normalized in _FALSE_STATES:
+            return False, "fresh"
+        return None, "unknown"
+
+    def _observe_level_indicator(
+        self, key: str, value: bool | None, now: datetime
+    ) -> tuple[bool, datetime | None]:
+        """Persist rising edges; an initial/restored level is never a new edge."""
+
+        states = self._persistent.observed_signal_states
+        active_since = self._persistent.indicator_active_since
+        if value is None:
+            return False, None
+        if key not in states:
+            states[key] = value
+            active_since[key] = None
+            return False, None
+        previous = states[key]
+        states[key] = value
+        if value and not previous:
+            active_since[key] = now.isoformat()
+        elif not value:
+            active_since[key] = None
+        stamp = _parse_iso(active_since.get(key)) if value else None
+        return bool(value and stamp is not None), stamp
+
+    def _opening_action_edges(
+        self, attrs: dict[str, Any], now: datetime
+    ) -> tuple[bool, datetime | None, bool, datetime | None]:
+        """Return entry-door and window action edges from the Opening Master."""
+
+        fields = (
+            "living_window_left",
+            "living_window_right",
+            "kitchen_patio_door",
+            "hall_entry_door",
+        )
+        current = {
+            key: str(attrs[key]).strip().lower()
+            for key in fields
+            if attrs.get(key) not in (None, "", "unknown", "unavailable", "stale")
+        }
+        previous = self._persistent.opening_states
+        if not previous:
+            previous.update(current)
+            return False, None, False, None
+        door_edge = False
+        window_edge = False
+        for key, value in current.items():
+            old = previous.get(key)
+            previous[key] = value
+            if old is None or old == value:
+                continue
+            if key == "hall_entry_door":
+                door_edge = old not in _OPEN_STATES and value in _OPEN_STATES
+            else:
+                window_edge = True
+        door_at = now if door_edge else None
+        window_at = now if window_edge else None
+        if door_at:
+            self._persistent.indicator_active_since["door"] = door_at.isoformat()
+        if window_at:
+            self._persistent.indicator_active_since["window"] = window_at.isoformat()
+        return door_edge, door_at, window_edge, window_at
 
     def _compute_wake_shadow(
         self,
@@ -762,29 +865,58 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
         wake_state_raw, wake_state_ts, wake_state_attrs = self._read_entity(CONF_WAKE_STATE)
         legacy_holiday_raw, legacy_holiday_ts, _ = self._read_entity(CONF_HOLIDAY_ACTIVE)
         await self.async_ensure_wake_config(wake_state_attrs)
-        wake_indicator_sources = {
-            "pc": CONF_PC_ACTIVE,
-            "ps5": CONF_PS5_ACTIVE,
-            "coffee": CONF_COFFEE_ACTIVE,
-            "door": CONF_DOOR_WAKE,
-            "homeoffice": CONF_HOMEOFFICE_PING,
-        }
-        wake_indicators = {
-            key: self._read_bool(conf)
-            for key, conf in wake_indicator_sources.items()
-        }
-        wake_indicator_active_since = {}
-        for key, conf in wake_indicator_sources.items():
-            entity_id = self._entity_id(conf)
-            state = self.hass.states.get(entity_id) if entity_id else None
-            wake_indicator_active_since[key] = (
-                state.last_changed if wake_indicators[key] and state is not None else None
-            )
         local_now = dt_util.as_local(now)
         day_state = logic.compute_day_state(local_now)
         day_phase_diagnostics = logic.compute_day_phase_diagnostics(
             local_now, day_state
         )
+
+        # Issue #59 reads only canonical, already-normalized device/activity
+        # contracts. None is unusable and must never be interpreted as off.
+        activity_inputs: dict[str, bool | None] = {}
+        activity_quality: dict[str, str] = {}
+        for key, conf in {
+            "tv": CONF_TV_ACTIVE,
+            "pc": CONF_PC_ACTIVE,
+            "ps5": CONF_PS5_ACTIVE,
+            "switch": CONF_SWITCH_ACTIVE,
+            "coffee": CONF_COFFEE_ACTIVE,
+            "shower": CONF_SHOWER_ACTIVE,
+        }.items():
+            activity_inputs[key], activity_quality[key] = self._read_activity(conf)
+
+        wake_indicators: dict[str, bool] = {}
+        wake_indicator_active_since: dict[str, datetime | None] = {}
+        for key in ("pc", "ps5", "switch", "coffee", "shower"):
+            active, active_at = self._observe_level_indicator(
+                key, activity_inputs[key], now
+            )
+            wake_indicators[key] = active
+            wake_indicator_active_since[key] = active_at
+
+        _, _, opening_attrs = self._read_entity(CONF_OPENING_MASTER)
+        door_edge, door_at, window_edge, window_at = self._opening_action_edges(
+            opening_attrs, now
+        )
+        legacy_door, _ = self._read_activity(CONF_DOOR_WAKE)
+        legacy_door_edge, legacy_door_at = self._observe_level_indicator(
+            "door_legacy", legacy_door, now
+        )
+        lock_raw, _, _ = self._read_entity(CONF_DOOR_LOCK)
+        lock_active = (
+            str(lock_raw).strip().lower() in {"unlocked", "unlocking", "open"}
+            if lock_raw not in (None, "", "unknown", "unavailable")
+            else None
+        )
+        unlock_edge, unlock_at = self._observe_level_indicator(
+            "door_unlock", lock_active, now
+        )
+        wake_indicators["door"] = door_edge or legacy_door_edge or unlock_edge
+        wake_indicator_active_since["door"] = _latest_datetime(
+            door_at, legacy_door_at, unlock_at
+        )
+        wake_indicators["window"] = window_edge
+        wake_indicator_active_since["window"] = window_at
 
         core_holidays = self._configured_holidays(local_now)
         holiday = local_now.date() in core_holidays
@@ -810,7 +942,10 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
         scheduled_wake = _scheduled_wake_for_sleep(wake_plan, local_now)
         confirmed_sleep_start = (
             _parse_iso(self._persistent.last_sleep_start)
-            if self._persistent.bio_state == BIO_SLEEP
+            if (
+                self._persistent.bio_state == BIO_SLEEP
+                and self._persistent.sleep_confirmed is True
+            )
             else None
         )
         sleep_plan = sleep_window.plan_sleep_window(
@@ -851,6 +986,9 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
             provisional_start=_parse_iso(
                 self._persistent.last_provisional_sleep_start
             ),
+            lifecycle_reference=_parse_iso(
+                self._persistent.sleep_reference_start
+            ),
         )
         interaction_decision = logic.regular_wake_interaction_decision(
             indicators=wake_indicators,
@@ -859,6 +997,25 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
             sleep_started=interaction_reference_start,
         )
         regular_interaction = interaction_decision.accepted
+        provisional_decision = logic.provisional_sleep_decision(
+            previous_bio=previous_bio,
+            presence_personal=presence_personal,
+            day_state=day_state,
+            tv_active=activity_inputs["tv"],
+            pc_active=activity_inputs["pc"],
+            ps5_active=activity_inputs["ps5"],
+            switch_active=activity_inputs["switch"],
+        )
+        evidence_state, _, evidence_attrs = self._read_entity(
+            CONF_SLEEP_TV_EVIDENCE
+        )
+        current_reference = self._persistent.sleep_reference_start
+        inferred_sleep = bool(
+            previous_bio == BIO_PROVISIONAL_SLEEP
+            and evidence_state == "off_confirmed"
+            and current_reference
+            and evidence_attrs.get("sleep_reference_start") == current_reference
+        )
         new_bio, sleep_start, awake_start = logic.compute_bio_state(
             prev_state=previous_bio,
             wake_needed=wake_needed,
@@ -870,6 +1027,8 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
             prev_awake_start=_parse_iso(self._persistent.last_awake_start),
             indicator_active_since=wake_indicator_active_since,
             provisional_active=sleep_plan.provisional_active,
+            provisional_detected=provisional_decision.accepted,
+            inferred_sleep=inferred_sleep,
             wake_due=sleep_plan.wake_due if sleep_plan.available else None,
             waking_started=waking_started,
             waking_timeout_minutes=DEFAULT_WAKING_TIMEOUT_MINUTES,
@@ -883,6 +1042,20 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
             and previous_bio != BIO_PROVISIONAL_SLEEP
         ):
             self._persistent.last_provisional_sleep_start = now.isoformat()
+            self._persistent.sleep_reference_start = now.isoformat()
+            self._persistent.sleep_source = None
+            self._persistent.sleep_confirmed = None
+            self._persistent.inferred_tv_off_at = None
+        if (
+            previous_bio == BIO_PROVISIONAL_SLEEP
+            and new_bio == BIO_SLEEP
+            and inferred_sleep
+        ):
+            self._persistent.sleep_source = "inferred_tv_off"
+            self._persistent.sleep_confirmed = False
+            self._persistent.inferred_tv_off_at = str(
+                evidence_attrs.get("off_confirmed_at") or now.isoformat()
+            )
         self._persistent.bio_state = new_bio
         self._persistent.last_sleep_start = (
             sleep_start.isoformat() if sleep_start else None
@@ -898,6 +1071,10 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
             recovered_start=waking_start_recovered,
             regular_interaction=regular_interaction,
         )
+        if previous_bio == BIO_AWAKE and new_bio == BIO_PROVISIONAL_SLEEP:
+            bio_reason = provisional_decision.reason
+        elif previous_bio == BIO_PROVISIONAL_SLEEP and new_bio == BIO_SLEEP:
+            bio_reason = "inferred_tv_off_confirmed_10m"
 
         media_ctx, _, _ = self._read_entity(CONF_MEDIA_CONTEXT)
         homeoffice_raw, _, _ = self._read_entity(CONF_HOMEOFFICE_PING)
@@ -927,6 +1104,7 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
             "configured:pc_active": _activity_source_quality(
                 pc_raw, self._entity_id(CONF_PC_ACTIVE)
             ),
+            "configured:tv_active": activity_quality["tv"],
         }
         activity_decision = logic.compute_activity_decision(
             bio=new_bio,
@@ -937,6 +1115,7 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
             media_activity=feed_state,
             decision_timestamp=now,
             pc_active=pc_active,
+            tv_active=activity_inputs["tv"] is True,
             media_activity_quality=(
                 feed_attrs.get("quality") or feed_attrs.get("source_quality")
             ),
@@ -1030,12 +1209,17 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
                 "max_duration_s": self.preheat_duration,
             },
             "bio_state": {
+                "contract_version": SLEEP_DETECTION_CONTRACT_VERSION,
                 "last_sleep_start": self._persistent.last_sleep_start,
                 "last_awake_start": self._persistent.last_awake_start,
                 "last_provisional_sleep_start": (
                     self._persistent.last_provisional_sleep_start
                 ),
                 "last_waking_start": self._persistent.last_waking_start,
+                "sleep_reference_start": self._persistent.sleep_reference_start,
+                "sleep_source": self._persistent.sleep_source,
+                "sleep_confirmed": self._persistent.sleep_confirmed,
+                "inferred_tv_off_at": self._persistent.inferred_tv_off_at,
                 "waking_timeout_minutes": DEFAULT_WAKING_TIMEOUT_MINUTES,
                 "waking_timeout_at": (
                     (
@@ -1056,6 +1240,14 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
                 ),
                 "wake_next": wake_next_raw,
                 "sleep_window": sleep_plan.as_attributes(),
+                "provisional_sleep": provisional_decision.as_attributes(),
+                "activity_inputs": activity_inputs,
+                "activity_input_quality": activity_quality,
+                "sleep_tv_evidence": {
+                    "state": evidence_state,
+                    "source": self._entity_id(CONF_SLEEP_TV_EVIDENCE),
+                    **evidence_attrs,
+                },
                 "wake_interaction": interaction_decision.as_attributes(),
                 **{f"indicator_{k}": v for k, v in wake_indicators.items()},
                 **{
@@ -1253,7 +1445,7 @@ def _parse_iso(raw: str | None) -> datetime | None:
 def _state_is_true(value: Any) -> bool:
     if value is None:
         return False
-    return str(value).lower() in ("on", "true", "home", "1", "yes", "active")
+    return str(value).lower() in _TRUE_STATES
 
 
 def _activity_source_quality(value: str | None, entity_id: str | None) -> str:
@@ -1368,6 +1560,7 @@ def _wake_interaction_reference_start(
     *,
     sleep_start: datetime | None,
     provisional_start: datetime | None,
+    lifecycle_reference: datetime | None = None,
 ) -> datetime | None:
     """Select the lifecycle edge that regular signals must follow.
 
@@ -1376,6 +1569,8 @@ def _wake_interaction_reference_start(
     only safe reference. Other Bio states do not accept a stale historical edge.
     """
 
+    if previous_bio in {BIO_SLEEP, BIO_PROVISIONAL_SLEEP, BIO_WAKING} and lifecycle_reference:
+        return lifecycle_reference
     if previous_bio == BIO_SLEEP:
         return sleep_start
     if previous_bio == BIO_PROVISIONAL_SLEEP:

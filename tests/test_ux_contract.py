@@ -54,7 +54,7 @@ def test_snapshot_is_versioned_and_timeline_has_exactly_nine_backend_phases():
 
     assert snapshot["contract"] == "benni_core_state.snapshot"
     assert snapshot["version"] == "1.0.0"
-    assert snapshot["integration_version"] == "0.11.5"
+    assert snapshot["integration_version"] == "0.11.6"
     assert snapshot["data"]["today"]["bio"]["provisional"] is True
     assert snapshot["data"]["today"]["bio"]["counts_as_confirmed_sleep"] is False
     assert len(snapshot["data"]["timeline"]["phases"]) == 9

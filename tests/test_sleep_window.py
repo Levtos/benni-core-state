@@ -159,14 +159,14 @@ def test_elapsed_duration_is_restart_safe_across_spring_dst():
     ).total_seconds() == 9 * 3600
 
 
-def test_awake_enters_provisional_without_creating_sleep_start():
+def test_schedule_only_provisional_window_no_longer_creates_ps_issue59():
     state, sleep_start, _ = _bio(
         BIO_AWAKE,
         now=datetime(2026, 8, 6, 23, 30, tzinfo=UTC),
         provisional_active=True,
     )
 
-    assert state == BIO_PROVISIONAL_SLEEP
+    assert state == BIO_AWAKE
     assert sleep_start is None
 
 

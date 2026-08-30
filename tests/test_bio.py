@@ -52,20 +52,28 @@ def test_wake_needed_does_not_promote_waking_to_awake():
 
 
 def test_strong_indicator_promotes_waking_to_awake_with_timestamp():
-    state, _, awake_ts = _bio(BIO_WAKING, indicators={**NO_IND, "coffee": True})
+    reference = NOW - timedelta(hours=5)
+    state, _, awake_ts = _bio(
+        BIO_WAKING,
+        indicators={**NO_IND, "coffee": True},
+        interaction_reference_start=reference,
+        indicator_active_since={**{key: None for key in NO_IND}, "coffee": NOW},
+    )
     assert state == BIO_AWAKE
     assert awake_ts == NOW
 
 
-def test_pc_from_sleep_does_not_promote_to_awake():
-    """PC activity remains observable but is not a Bio wake trigger."""
+def test_pc_from_sleep_promotes_to_awake_after_fresh_edge():
+    """Issue #59 supersedes #58: fresh active PC use is strong Wake evidence."""
+    sleep_start = NOW - timedelta(hours=5)
     state, _, awake_ts = _bio(
         BIO_SLEEP,
         indicators={**NO_IND, "pc": True},
-        prev_sleep_start=NOW - timedelta(hours=5),
+        prev_sleep_start=sleep_start,
+        indicator_active_since={**{key: None for key in NO_IND}, "pc": NOW},
     )
-    assert state == BIO_SLEEP
-    assert awake_ts is None
+    assert state == BIO_AWAKE
+    assert awake_ts == NOW
 
 
 def test_manual_sleep_ignores_wake_indicators_already_active_before_sleep():
@@ -98,12 +106,17 @@ def test_indicator_that_turns_on_after_sleep_can_wake():
     assert awake_ts == NOW
 
 
-def test_wake_indicators_suppressed_at_night():
-    """Nachts (early_night/late_night) zählen PS5/Kaffee/Tür nicht als Wake."""
-    state, _, _ = _bio(
-        BIO_SLEEP, indicators={**NO_IND, "coffee": True}, day_state=DAY_EARLY_NIGHT
+def test_strong_wake_indicator_is_time_independent_at_night():
+    reference = NOW - timedelta(hours=1)
+    state, _, awake_ts = _bio(
+        BIO_SLEEP,
+        indicators={**NO_IND, "coffee": True},
+        day_state=DAY_EARLY_NIGHT,
+        prev_sleep_start=reference,
+        indicator_active_since={**{key: None for key in NO_IND}, "coffee": NOW},
     )
-    assert state == BIO_SLEEP
+    assert state == BIO_AWAKE
+    assert awake_ts == NOW
 
 
 def test_wake_needed_still_works_at_night():
@@ -147,8 +160,7 @@ def test_early_morning_stale_indicator_does_not_break_sleep():
     assert awake_ts is None
 
 
-def test_forenoon_fresh_pc_indicator_does_not_break_sleep():
-    """Auch ein frisch aktiver PC ist kein Wake-Signal."""
+def test_forenoon_fresh_pc_indicator_breaks_sleep():
     state, _, awake_ts = _bio(
         BIO_SLEEP,
         indicators={**NO_IND, "pc": True},
@@ -159,8 +171,8 @@ def test_forenoon_fresh_pc_indicator_does_not_break_sleep():
             "pc": NOW - timedelta(minutes=1),
         },
     )
-    assert state == BIO_SLEEP
-    assert awake_ts is None
+    assert state == BIO_AWAKE
+    assert awake_ts == NOW
 
 
 def test_early_morning_indicator_breaks_sleep_when_wake_needed():

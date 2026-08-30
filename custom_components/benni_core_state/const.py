@@ -53,8 +53,14 @@ CONF_WAKE_STATE = "wake_state"
 CONF_HOLIDAY_ACTIVE = "holiday_active"
 CONF_PC_ACTIVE = "pc_active"
 CONF_PS5_ACTIVE = "ps5_active"
+CONF_SWITCH_ACTIVE = "switch_active"
 CONF_COFFEE_ACTIVE = "coffee_active"
 CONF_DOOR_WAKE = "door_wake"
+CONF_SHOWER_ACTIVE = "shower_active"
+CONF_OPENING_MASTER = "opening_master"
+CONF_DOOR_LOCK = "door_lock"
+CONF_TV_ACTIVE = "tv_active"
+CONF_SLEEP_TV_EVIDENCE = "sleep_tv_evidence"
 CONF_MEDIA_CONTEXT = "media_context"
 # Deprecated legacy Config-Entry key. It remains readable for compatibility and
 # diagnosis, but is neither selectable nor read as an Activity-State input.
@@ -104,6 +110,8 @@ DEFAULT_TRANSITION_HOLD = 120     # seconds
 DEFAULT_WAKE_WINDOW_MINUTES = 5   # existing Wake-Planner window
 DEFAULT_WAKE_FLOOR = "06:00"      # absolute local civil-time floor
 DEFAULT_WAKING_TIMEOUT_MINUTES = 30
+SLEEP_TV_OFF_CONFIRM_SECONDS: Final[int] = 10 * 60
+SLEEP_DETECTION_CONTRACT_VERSION: Final[str] = "2.0.0"
 
 # --- State enums -------------------------------------------------------------
 
@@ -281,6 +289,14 @@ PROFILE_PREFILL: dict[str, dict[str, str]] = {
         CONF_PROXIMITY_DISTANCE: "sensor.home_entfernung_von_iphone_von_benjamin",
         CONF_PROXIMITY_DIRECTION: "sensor.home_bewegung_von_iphone_von_benjamin",
         CONF_PC_ACTIVE: "sensor.benni_master_pc",
+        CONF_PS5_ACTIVE: "sensor.benni_master_ps5",
+        CONF_SWITCH_ACTIVE: "sensor.benni_master_switch",
+        CONF_TV_ACTIVE: "sensor.benni_master_tv",
+        CONF_COFFEE_ACTIVE: "sensor.benni_device_kitchen_coffee",
+        CONF_SHOWER_ACTIVE: "sensor.benni_combined_bath_shower_active",
+        CONF_OPENING_MASTER: "sensor.benni_master_opening",
+        CONF_DOOR_LOCK: "sensor.benni_master_door_lock",
+        CONF_SLEEP_TV_EVIDENCE: "sensor.benni_media_apply_sleep_tv_evidence",
         CONF_WAKE_NEEDED: "binary_sensor.wake_planner_benni_wake_needed",
         CONF_WAKE_NEXT: "sensor.wake_planner_benni_next_wake",
         CONF_WAKE_STATE: "sensor.wake_planner_benni_wake_state",
