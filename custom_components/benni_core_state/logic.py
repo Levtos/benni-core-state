@@ -961,12 +961,9 @@ def provisional_sleep_decision(
     previous_bio: str,
     presence_personal: str,
     day_state: str | None,
-    tv_active: bool | None,
-    pc_active: bool | None,
-    ps5_active: bool | None,
-    switch_active: bool | None,
+    activity_state: str,
 ) -> ProvisionalSleepDecision:
-    """Issue #59's complete, fail-closed PS entry contract."""
+    """Return the binding canonical-Activity PS entry decision."""
 
     rejected: list[str] = []
     if previous_bio != BIO_AWAKE:
@@ -975,21 +972,11 @@ def provisional_sleep_decision(
         rejected.append("presence")
     if day_state not in {DAY_EARLY_NIGHT, DAY_LATE_NIGHT}:
         rejected.append("day_phase")
-    inputs = {
-        "tv": tv_active,
-        "pc": pc_active,
-        "ps5": ps5_active,
-        "switch": switch_active,
-    }
-    rejected.extend(f"{key}_unusable" for key, value in inputs.items() if value is None)
-    if tv_active is not True:
-        rejected.append("tv_not_active")
-    for key, value in (("pc", pc_active), ("ps5", ps5_active), ("switch", switch_active)):
-        if value is True:
-            rejected.append(f"{key}_active")
+    if activity_state != ACT_ENTERTAINMENT:
+        rejected.append("activity_not_entertainment")
     return ProvisionalSleepDecision(
         accepted=not rejected,
-        reason="behavioral_tv_only_night" if not rejected else "ps_entry_blocked",
+        reason="canonical_entertainment_night" if not rejected else "ps_entry_blocked",
         rejected_inputs=tuple(dict.fromkeys(rejected)),
     )
 
@@ -1542,7 +1529,9 @@ def compute_activity_decision(
     candidates: dict[str, tuple[str, ...]] = {}
 
     sleep_context = bio in {BIO_SLEEP, BIO_PROVISIONAL_SLEEP}
-    tv_entertainment_during_sleep = sleep_context and tv_active
+    tv_entertainment_during_sleep = sleep_context and (
+        tv_active or feed_bucket == ACT_ENTERTAINMENT
+    )
     if sleep_context and not tv_entertainment_during_sleep:
         candidates[ACT_SLEEP] = (_ACTIVITY_SOURCE_BIO,)
     elif tv_entertainment_during_sleep:

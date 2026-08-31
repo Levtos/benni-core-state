@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-from .const import BIO_SLEEP
+from .const import BIO_AWAKE, BIO_SLEEP, BIO_WAKING
 
 
 @dataclass
@@ -59,6 +59,27 @@ class PersistentState:
             return cls()
         kwargs = {k: raw.get(k) for k in cls.__dataclass_fields__ if k in raw}
         return cls(**kwargs)  # type: ignore[arg-type]
+
+
+def apply_manual_bio_command(
+    state: PersistentState,
+    *,
+    target: str,
+    now_iso: str,
+) -> None:
+    """Mutate the restart-safe state for one explicit Bio command."""
+
+    state.bio_state = target
+    if target == BIO_SLEEP:
+        state.last_sleep_start = now_iso
+        state.sleep_reference_start = now_iso
+        state.sleep_source = "manual"
+        state.sleep_confirmed = True
+        state.inferred_tv_off_at = None
+    elif target == BIO_WAKING:
+        state.last_waking_start = now_iso
+    elif target == BIO_AWAKE:
+        state.last_awake_start = now_iso
 
 
 @dataclass

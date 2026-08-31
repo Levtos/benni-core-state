@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import inspect
+from pathlib import Path
 
 import pytest
 
@@ -14,6 +16,7 @@ from custom_components.benni_core_state.const import (
     BIO_WAKING,
     DAY_EARLY_MORNING,
     DAY_EARLY_NIGHT,
+    DAY_LATE_EVENING,
     DAY_LATE_NIGHT,
     PERS_HOME,
 )
@@ -23,7 +26,10 @@ from custom_components.benni_core_state.logic import (
     provisional_sleep_decision,
     regular_wake_interaction_decision,
 )
-from custom_components.benni_core_state.models import PersistentState
+from custom_components.benni_core_state.models import (
+    PersistentState,
+    apply_manual_bio_command,
+)
 
 
 NOW = datetime(2026, 8, 30, 22, 0, tzinfo=timezone.utc)
@@ -31,44 +37,80 @@ REFERENCE = NOW - timedelta(minutes=30)
 
 
 @pytest.mark.parametrize("phase", [DAY_EARLY_NIGHT, DAY_LATE_NIGHT])
-def test_ps_enters_only_for_home_tv_only_night(phase):
+def test_home_awake_night_entertainment_enters_ps(phase):
     decision = provisional_sleep_decision(
         previous_bio=BIO_AWAKE,
         presence_personal=PERS_HOME,
         day_state=phase,
-        tv_active=True,
-        pc_active=False,
-        ps5_active=False,
-        switch_active=False,
+        activity_state=ACT_ENTERTAINMENT,
     )
     assert decision.accepted is True
+    assert decision.reason == "canonical_entertainment_night"
 
 
 @pytest.mark.parametrize(
     ("override", "rejection"),
     [
-        ({"tv_active": None}, "tv_unusable"),
-        ({"tv_active": False}, "tv_not_active"),
-        ({"pc_active": True}, "pc_active"),
-        ({"ps5_active": True}, "ps5_active"),
-        ({"switch_active": True}, "switch_active"),
+        ({"activity_state": "idle"}, "activity_not_entertainment"),
+        ({"day_state": DAY_LATE_EVENING}, "day_phase"),
         ({"day_state": DAY_EARLY_MORNING}, "day_phase"),
     ],
 )
-def test_ps_entry_is_fail_closed(override, rejection):
+def test_ps_entry_rejects_non_binding_context(override, rejection):
     values = dict(
         previous_bio=BIO_AWAKE,
         presence_personal=PERS_HOME,
         day_state=DAY_EARLY_NIGHT,
-        tv_active=True,
-        pc_active=False,
-        ps5_active=False,
-        switch_active=False,
+        activity_state=ACT_ENTERTAINMENT,
     )
     values.update(override)
     decision = provisional_sleep_decision(**values)
     assert decision.accepted is False
     assert rejection in decision.rejected_inputs
+
+
+def test_running_entertainment_enters_ps_when_phase_crosses_into_night():
+    evening = provisional_sleep_decision(
+        previous_bio=BIO_AWAKE,
+        presence_personal=PERS_HOME,
+        day_state=DAY_LATE_EVENING,
+        activity_state=ACT_ENTERTAINMENT,
+    )
+    night = provisional_sleep_decision(
+        previous_bio=BIO_AWAKE,
+        presence_personal=PERS_HOME,
+        day_state=DAY_EARLY_NIGHT,
+        activity_state=ACT_ENTERTAINMENT,
+    )
+    assert evening.accepted is False
+    assert night.accepted is True
+
+
+def test_entertainment_starting_during_night_enters_ps():
+    idle = provisional_sleep_decision(
+        previous_bio=BIO_AWAKE,
+        presence_personal=PERS_HOME,
+        day_state=DAY_LATE_NIGHT,
+        activity_state="idle",
+    )
+    entertainment = provisional_sleep_decision(
+        previous_bio=BIO_AWAKE,
+        presence_personal=PERS_HOME,
+        day_state=DAY_LATE_NIGHT,
+        activity_state=ACT_ENTERTAINMENT,
+    )
+    assert idle.accepted is False
+    assert entertainment.accepted is True
+
+
+def test_ps_entry_has_no_individual_device_or_availability_gates():
+    parameters = inspect.signature(provisional_sleep_decision).parameters
+    assert set(parameters) == {
+        "previous_bio",
+        "presence_personal",
+        "day_state",
+        "activity_state",
+    }
 
 
 @pytest.mark.parametrize("bio", [BIO_PROVISIONAL_SLEEP, BIO_SLEEP])
@@ -102,14 +144,31 @@ def test_active_tv_sleep_activity_does_not_expire_with_media_feed_age():
     assert decision.winner == ACT_ENTERTAINMENT
 
 
-def test_sleep_without_active_tv_remains_sleep_activity():
+def test_canonical_entertainment_feed_keeps_ps_activity_without_tv_gate():
+    decision = compute_activity_decision(
+        bio=BIO_PROVISIONAL_SLEEP,
+        presence_personal=PERS_HOME,
+        day_context="werktag",
+        homeoffice=False,
+        household_active=False,
+        media_activity=ACT_ENTERTAINMENT,
+        media_activity_quality="fresh",
+        media_activity_last_updated=NOW,
+        decision_timestamp=NOW,
+        tv_active=False,
+        source_status={"configured:tv_active": "unavailable"},
+    )
+    assert decision.winner == ACT_ENTERTAINMENT
+
+
+def test_sleep_without_active_tv_or_entertainment_remains_sleep_activity():
     decision = compute_activity_decision(
         bio=BIO_SLEEP,
         presence_personal=PERS_HOME,
         day_context="werktag",
         homeoffice=False,
         household_active=False,
-        media_activity=ACT_ENTERTAINMENT,
+        media_activity="idle",
         media_activity_quality="fresh",
         media_activity_last_updated=NOW,
         decision_timestamp=NOW,
@@ -221,3 +280,45 @@ def test_issue59_persistence_contract_roundtrip():
         opening_states={"living_window_left": "closed"},
     )
     assert PersistentState.from_dict(state.to_dict()) == state
+
+
+@pytest.mark.parametrize("initial_bio", [BIO_AWAKE, BIO_PROVISIONAL_SLEEP])
+def test_manual_sleep_command_sets_full_provenance_and_new_reference(
+    initial_bio,
+):
+    previous_reference = (NOW - timedelta(minutes=20)).isoformat()
+    persistent = PersistentState(
+        bio_state=initial_bio,
+        sleep_reference_start=previous_reference,
+        sleep_source=None,
+        sleep_confirmed=None,
+        inferred_tv_off_at=(NOW - timedelta(minutes=10)).isoformat(),
+    )
+    apply_manual_bio_command(
+        persistent,
+        target=BIO_SLEEP,
+        now_iso=NOW.isoformat(),
+    )
+
+    assert persistent.bio_state == BIO_SLEEP
+    assert persistent.last_sleep_start == NOW.isoformat()
+    assert persistent.sleep_reference_start == NOW.isoformat()
+    assert persistent.sleep_reference_start != previous_reference
+    assert persistent.sleep_source == "manual"
+    assert persistent.sleep_confirmed is True
+    assert persistent.inferred_tv_off_at is None
+    assert PersistentState.from_dict(persistent.to_dict()) == persistent
+
+
+def test_mark_sleep_service_delegates_to_canonical_bio_command():
+    source = (
+        Path(__file__).parents[1]
+        / "custom_components"
+        / "benni_core_state"
+        / "services.py"
+    ).read_text(encoding="utf-8")
+    apply_body = source.split("async def _apply_bio", 1)[1].split(
+        "\n\n\ndef async_register_services", 1
+    )[0]
+    assert "await coord.async_apply_bio_command(target)" in apply_body
+    assert "coord._persistent" not in apply_body

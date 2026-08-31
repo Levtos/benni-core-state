@@ -94,8 +94,10 @@ statt auf `unavailable` zu gehen.
 * **`coming_home`** entsteht nur aus echter Abwesenheit (vorheriger *realer*
   Presence-State war `abwesend`).
 * **Bio-State** ist die einzige Wahrheit für `sleep`, `provisional_sleep`,
-  `waking` und `awake`. PS entsteht nur zuhause in `early_night` oder
-  `late_night` bei kanonisch aktivem TV und inaktivem PC/PS5/Switch.
+  `waking` und `awake`. PS entsteht exakt bei `home + awake + early_night` oder
+  `late_night + activity_state=entertainment`. Der kanonische Activity-Winner
+  ist die verdichtete Quelle; Core State wertet dafür keine einzelnen TV-/PC-/
+  Gaming- oder Availability-Gates erneut aus.
   Zehn kontinuierliche Minuten bestätigtes TV-Aus aus dem Media-Apply-Evidence-
   Contract erzeugen unbestätigtes `sleep_source=inferred_tv_off`; manueller
   Sleep bleibt `sleep_source=manual`, `sleep_confirmed=true`. Beide folgen
@@ -144,8 +146,9 @@ benni_core_state.mark_awake      (Shortcut für state=awake)
 benni_core_state.configure_sleep_window (persistiert M und A)
 ```
 
-Funktional identisch zum Toolbox-Ist-Stand: der persistierte Bio-Zustand wird
-gepatcht und ein Refresh ausgelöst.
+Alle Bio-Services verwenden denselben kanonischen Command- und Persistenzpfad.
+Manueller Sleep setzt neben dem Bio-State unmittelbar die restart-feste
+Provenance und eine neue Lifecycle-Referenz.
 
 ## Config-/Options-Flow
 
