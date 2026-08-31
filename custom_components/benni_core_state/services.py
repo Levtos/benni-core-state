@@ -7,16 +7,14 @@ Registriert direkt unter der eigenen Domain (kein Umbrella-Präfix mehr):
 * ``benni_core_state.mark_awake``  — Shortcut für state=awake
 * ``benni_core_state.configure_sleep_window`` — persistiert M und A
 
-Funktional identisch zum Toolbox-Ist-Stand: der persistierte Bio-Zustand aller
-Instanzen wird gepatcht und ein Refresh ausgelöst.
+Alle Bio-Services delegieren an denselben Coordinator-Commandpfad wie die
+interne UX-API, einschließlich Provenance, Persistenz und Refresh.
 """
 
 from __future__ import annotations
 
 import voluptuous as vol
 from homeassistant.core import HomeAssistant, ServiceCall
-from homeassistant.util import dt as dt_util
-
 from .const import (
     BIO_AWAKE,
     BIO_SLEEP,
@@ -46,16 +44,8 @@ CONFIGURE_SLEEP_WINDOW_SCHEMA = vol.Schema(
 
 
 async def _apply_bio(hass: HomeAssistant, target: str) -> None:
-    now_iso = dt_util.utcnow().isoformat()
     for coord in all_coordinators(hass):
-        coord._persistent.bio_state = target
-        if target == BIO_SLEEP:
-            coord._persistent.last_sleep_start = now_iso
-        elif target == BIO_WAKING:
-            coord._persistent.last_waking_start = now_iso
-        elif target == BIO_AWAKE:
-            coord._persistent.last_awake_start = now_iso
-        await coord.async_request_refresh()
+        await coord.async_apply_bio_command(target)
 
 
 def async_register_services(hass: HomeAssistant) -> None:

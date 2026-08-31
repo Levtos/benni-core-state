@@ -102,7 +102,7 @@ from .const import (
     wake_config_storage_key,
     ux_command_storage_key,
 )
-from .models import ComputedState, PersistentState
+from .models import ComputedState, PersistentState, apply_manual_bio_command
 from .mapping import MAPPING_CONTRACT_VERSION, mapping_diagnostics
 from . import sleep_window, wake_config, wake_planning
 
@@ -325,15 +325,11 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
         """Apply one user-facing, explicitly allowed Bio action."""
 
         now_iso = dt_util.utcnow().isoformat()
-        self._persistent.bio_state = target
-        if target == BIO_SLEEP:
-            self._persistent.last_sleep_start = now_iso
-            self._persistent.sleep_reference_start = now_iso
-            self._persistent.sleep_source = "manual"
-            self._persistent.sleep_confirmed = True
-            self._persistent.inferred_tv_off_at = None
-        elif target == BIO_AWAKE:
-            self._persistent.last_awake_start = now_iso
+        apply_manual_bio_command(
+            self._persistent,
+            target=target,
+            now_iso=now_iso,
+        )
         await self._async_save()
         await self.async_request_refresh()
 
@@ -997,14 +993,68 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
             sleep_started=interaction_reference_start,
         )
         regular_interaction = interaction_decision.accepted
+
+        homeoffice_raw, _, _ = self._read_entity(CONF_HOMEOFFICE_PING)
+        pc_raw, _, _ = self._read_entity(CONF_PC_ACTIVE)
+        homeoffice = _state_is_true(homeoffice_raw)
+        pc_active = _state_is_true(pc_raw)
+        # Activity is the sole owner of the behavior condensation used by the
+        # PS gate.  Evaluate it for the current Bio snapshot first, then once
+        # more after a Bio transition so the published winner is coherent.
+        feed_state, feed_last_updated, feed_attrs = self._read_entity(
+            CONF_MEDIA_ACTIVITY_CONTEXT, use_last_updated=True
+        )
+        feed_source = self._entity_id(CONF_MEDIA_ACTIVITY_CONTEXT) or (
+            "unbound:media_state.activity_context"
+        )
+        private_source_diagnostic = _private_source_diagnostic(
+            configured_entity_id=self._entity_id(CONF_PRIVATE_SOURCE),
+            feed_source=feed_source,
+        )
+        activity_source_status = {
+            "configured:homeoffice_ping": _activity_source_quality(
+                homeoffice_raw, self._entity_id(CONF_HOMEOFFICE_PING)
+            ),
+            "configured:household_source": _activity_source_quality(
+                household_raw, self._entity_id(CONF_HOUSEHOLD_SOURCE)
+            ),
+            "configured:pc_active": _activity_source_quality(
+                pc_raw, self._entity_id(CONF_PC_ACTIVE)
+            ),
+            "configured:tv_active": activity_quality["tv"],
+        }
+
+        def _activity_decision_for(bio_state: str) -> logic.ActivityDecision:
+            return logic.compute_activity_decision(
+                bio=bio_state,
+                presence_personal=presence_personal,
+                day_context=day_context,
+                homeoffice=homeoffice,
+                household_active=external_occupied,
+                media_activity=feed_state,
+                decision_timestamp=now,
+                pc_active=pc_active,
+                tv_active=activity_inputs["tv"] is True,
+                media_activity_quality=(
+                    feed_attrs.get("quality") or feed_attrs.get("source_quality")
+                ),
+                media_activity_freshness=(
+                    feed_attrs.get("freshness")
+                    or feed_attrs.get("freshness_status")
+                ),
+                media_activity_degraded=feed_attrs.get("degraded"),
+                media_activity_last_updated=feed_last_updated,
+                media_activity_source=feed_source,
+                media_activity_freshness_s=DEFAULT_ACTIVITY_FEED_FRESHNESS_SECONDS,
+                source_status=activity_source_status,
+            )
+
+        entry_activity_decision = _activity_decision_for(previous_bio)
         provisional_decision = logic.provisional_sleep_decision(
             previous_bio=previous_bio,
             presence_personal=presence_personal,
             day_state=day_state,
-            tv_active=activity_inputs["tv"],
-            pc_active=activity_inputs["pc"],
-            ps5_active=activity_inputs["ps5"],
-            switch_active=activity_inputs["switch"],
+            activity_state=entry_activity_decision.winner,
         )
         evidence_state, _, evidence_attrs = self._read_entity(
             CONF_SLEEP_TV_EVIDENCE
@@ -1077,56 +1127,10 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
             bio_reason = "inferred_tv_off_confirmed_10m"
 
         media_ctx, _, _ = self._read_entity(CONF_MEDIA_CONTEXT)
-        homeoffice_raw, _, _ = self._read_entity(CONF_HOMEOFFICE_PING)
-        pc_raw, _, _ = self._read_entity(CONF_PC_ACTIVE)
-        homeoffice = _state_is_true(homeoffice_raw)
-        pc_active = _state_is_true(pc_raw)
-        # Activity decision: the Media-State entity is a read-only input feed;
-        # Core State owns the global precedence and records feed age/quality
-        # before allowing a Media candidate to win.
-        feed_state, feed_last_updated, feed_attrs = self._read_entity(
-            CONF_MEDIA_ACTIVITY_CONTEXT, use_last_updated=True
-        )
-        feed_source = self._entity_id(CONF_MEDIA_ACTIVITY_CONTEXT) or (
-            "unbound:media_state.activity_context"
-        )
-        private_source_diagnostic = _private_source_diagnostic(
-            configured_entity_id=self._entity_id(CONF_PRIVATE_SOURCE),
-            feed_source=feed_source,
-        )
-        activity_source_status = {
-            "configured:homeoffice_ping": _activity_source_quality(
-                homeoffice_raw, self._entity_id(CONF_HOMEOFFICE_PING)
-            ),
-            "configured:household_source": _activity_source_quality(
-                household_raw, self._entity_id(CONF_HOUSEHOLD_SOURCE)
-            ),
-            "configured:pc_active": _activity_source_quality(
-                pc_raw, self._entity_id(CONF_PC_ACTIVE)
-            ),
-            "configured:tv_active": activity_quality["tv"],
-        }
-        activity_decision = logic.compute_activity_decision(
-            bio=new_bio,
-            presence_personal=presence_personal,
-            day_context=day_context,
-            homeoffice=homeoffice,
-            household_active=external_occupied,
-            media_activity=feed_state,
-            decision_timestamp=now,
-            pc_active=pc_active,
-            tv_active=activity_inputs["tv"] is True,
-            media_activity_quality=(
-                feed_attrs.get("quality") or feed_attrs.get("source_quality")
-            ),
-            media_activity_freshness=(
-                feed_attrs.get("freshness") or feed_attrs.get("freshness_status")
-            ),
-            media_activity_degraded=feed_attrs.get("degraded"),
-            media_activity_last_updated=feed_last_updated,
-            media_activity_source=feed_source,
-            media_activity_freshness_s=DEFAULT_ACTIVITY_FEED_FRESHNESS_SECONDS,
-            source_status=activity_source_status,
+        activity_decision = (
+            entry_activity_decision
+            if new_bio == previous_bio
+            else _activity_decision_for(new_bio)
         )
         activity = activity_decision.winner
         feed_quality = activity_decision.freshness[feed_source]["status"]

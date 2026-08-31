@@ -3,7 +3,7 @@
 - Status: implemented for technical testing; not released, installed, or live verified
 - Date: 2026-08-30
 - Tracking: [Levtos/benni-core-state#59](https://github.com/Levtos/benni-core-state/issues/59)
-- Contract version: `2.0.0`
+- Contract version: `2.1.0`
 
 ## Ownership
 
@@ -15,12 +15,14 @@ Core State never calls a TV, HomePod, or light service.
 
 ## Behavioral lifecycle
 
-`awake -> provisional_sleep` is admitted only at home in `early_night` or
-`late_night`, with a canonically active TV and canonically inactive PC, PS5,
-and Switch. Every required input is tri-state: unknown or unavailable blocks
-the transition. The same decision runs on every input update and phase change,
-so a TV already active at the night boundary and devices becoming inactive
-during the night are covered without a second timer.
+`awake -> provisional_sleep` is admitted exactly when Presence is home, the
+current Bio state is awake, the Day state is `early_night` or `late_night`, and
+the canonical Activity decision is `entertainment`. Activity arbitration is the
+sole owner of that condensation: the PS gate does not re-read or re-evaluate
+individual TV, PC, PS5, Switch, inactivity, or availability inputs. The same
+decision runs on every input update and phase change, covering both an already
+running entertainment context at the night boundary and entertainment starting
+inside either night phase.
 
 Media Apply publishes versioned TV evidence. Core accepts
 `off_confirmed` only while Bio is PS and only when its
@@ -32,14 +34,18 @@ Ten continuous minutes of confirmed canonical TV-off then produce:
 - `sleep_confirmed=false`
 - `inferred_tv_off_at=<evidence timestamp>`
 
-Manual Sleep remains immediate and produces `sleep_source=manual` and
-`sleep_confirmed=true`. PS and inferred S use the regular wake time directly;
+Manual Sleep remains immediate and produces a new `sleep_reference_start`,
+`sleep_source=manual`, and `sleep_confirmed=true` through the same saved command
+path used by the internal Bio command API. The new reference resets the
+Media-Apply deadline contract to a full `now + 45 min`; it never carries the
+remaining duration forward. PS and inferred S use the regular wake time directly;
 only confirmed S can participate in a future minimum-sleep calculation.
 
 ## Activity and Wake
 
-PS/S with a canonically active TV publishes `activity_state=entertainment`.
-PS/S without an active TV publishes `sleep`. TV, light, motion, HomePods, and
+PS/S with a fresh canonical entertainment context or canonically active TV
+publishes `activity_state=entertainment`. PS/S without either publishes `sleep`.
+TV, light, motion, HomePods, and
 generic media state are never Wake evidence.
 
 Fresh rising edges after `sleep_reference_start` from PC, active PS5, active

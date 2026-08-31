@@ -5,6 +5,21 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
 ## [Unreleased]
 
+## [0.11.7] - 2026-08-31
+
+### Fixed
+- Der automatische PS-Eintritt konsumiert ausschließlich den kanonischen
+  Activity-Winner: `home + awake + early_night|late_night + entertainment`.
+  Optionale Einzelgeräte-/Availability-Slots können den Übergang nicht mehr
+  blockieren; Phasenwechsel und neu beginnendes Entertainment nutzen denselben
+  deterministischen Pfad.
+- `benni_core_state.mark_sleep` und die übrigen Bio-Services delegieren an den
+  kanonischen Command-/Persistenzpfad. Manueller Sleep setzt damit unmittelbar
+  `sleep_source=manual`, `sleep_confirmed=true` und eine neue
+  `sleep_reference_start`, die nach Neustart erhalten bleibt.
+- PS/S behält ein frisches kanonisches Entertainment als tatsächliche Activity,
+  ohne dafür im PS-Gate einzelne Gerätequellen erneut auszuwerten.
+
 ## [0.11.6] - 2026-08-30
 
 ### Added

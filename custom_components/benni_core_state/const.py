@@ -111,7 +111,7 @@ DEFAULT_WAKE_WINDOW_MINUTES = 5   # existing Wake-Planner window
 DEFAULT_WAKE_FLOOR = "06:00"      # absolute local civil-time floor
 DEFAULT_WAKING_TIMEOUT_MINUTES = 30
 SLEEP_TV_OFF_CONFIRM_SECONDS: Final[int] = 10 * 60
-SLEEP_DETECTION_CONTRACT_VERSION: Final[str] = "2.0.0"
+SLEEP_DETECTION_CONTRACT_VERSION: Final[str] = "2.1.0"
 
 # --- State enums -------------------------------------------------------------
 
