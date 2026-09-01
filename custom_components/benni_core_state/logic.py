@@ -73,6 +73,8 @@ from .const import (
     PERS_AWAY,
     PERS_HOME,
     PERS_PARENTS,
+    PROFILE_BENNI,
+    PROFILE_ELTERN,
     PRESENCE_PERSONAL_STATES,
     TRANS_COMING_HOME,
     TRANS_LEAVING_HOME,
@@ -119,6 +121,18 @@ def _is_home(value: str | None) -> bool:
     if value is None:
         return False
     return str(value).lower() in ("home", "on", "true", "1", "yes")
+
+
+def _is_reliable_location(value: str | None) -> bool:
+    """Return whether a tracker state is usable home/away evidence.
+
+    Named zones other than ``home`` are valid away evidence. Missing,
+    ``unknown`` and ``unavailable`` values are absence of evidence and must
+    never be converted into away.
+    """
+    if value is None:
+        return False
+    return str(value).strip().lower() not in ("", "unknown", "unavailable")
 
 
 def _is_fresh(ts: datetime | None, now: datetime, freshness_s: int) -> bool:
@@ -218,8 +232,13 @@ def compute_presence_personal(
     now: datetime,
     freshness_s: int,
     prev_personal: str | None = None,
+    profile: str = PROFILE_BENNI,
 ) -> str:
     """Decide ``zuhause`` / ``bei_eltern`` / ``abwesend``.
+
+    ``eltern`` uses the two GPS slots as equal household evidence and returns
+    only ``zuhause`` or ``abwesend``. The detailed priority list below is the
+    unchanged ``benni`` compatibility path.
 
     Priority (FLEET-100 Phase A — primary GPS is authoritative for *away*):
 
@@ -274,6 +293,28 @@ def compute_presence_personal(
     """
     fresh_primary = _is_fresh(gps_primary_ts, now, freshness_s)
     fresh_secondary = _is_fresh(gps_secondary_ts, now, freshness_s)
+
+    if profile == PROFILE_ELTERN:
+        # The historical primary/secondary slot names stay for Config-Entry
+        # compatibility. In the parents profile they are equal household
+        # evidence sources: any reliable home wins; otherwise every currently
+        # reliable source agrees on away by construction. If only one source
+        # is reliable, it decides. No signal retains the previous state.
+        reliable_locations = [
+            value
+            for value, fresh in (
+                (gps_primary, fresh_primary),
+                (gps_secondary, fresh_secondary),
+            )
+            if fresh and _is_reliable_location(value)
+        ]
+        if any(_is_home(value) for value in reliable_locations):
+            return PERS_HOME
+        if reliable_locations:
+            return PERS_AWAY
+        if prev_personal in PRESENCE_PERSONAL_STATES:
+            return prev_personal
+        return PERS_AWAY
 
     # A fresh primary GPS that puts Benni OUTSIDE the home zone is authoritative
     # for being away: it overrides the "phone on home WLAN" home signals, which
@@ -352,7 +393,16 @@ def compute_presence_personal(
 # --------------------------------------------------------- household
 
 
-def compute_presence_household(personal: str, external_occupied: bool) -> str:
+def compute_presence_household(
+    personal: str,
+    external_occupied: bool,
+    *,
+    profile: str = PROFILE_BENNI,
+) -> str:
+    if profile == PROFILE_ELTERN:
+        # Parents are the household itself. Optional Benni-era external
+        # occupancy inputs must not become a third presence source.
+        return HH_OCCUPIED if personal == PERS_HOME else HH_EMPTY
     if personal == PERS_HOME or external_occupied:
         return HH_OCCUPIED
     return HH_EMPTY
@@ -370,6 +420,7 @@ def compute_presence_band(
     near_r: float,
     hysteresis_m: float,
     prev_band: str | None,
+    profile: str = PROFILE_BENNI,
 ) -> str:
     """Bucket distance into home / preheat / near / far.
 
@@ -377,11 +428,19 @@ def compute_presence_band(
     extended by ``hysteresis_m`` so a noisy GPS doesn't flap. When the
     personal state is ``zuhause``, the band is always ``home`` (the band must
     not be "far" while we are clearly inside, e.g. when GPS is stale but WLAN
-    confirms home).
+    confirms home). In the ``eltern`` profile, confirmed household away with
+    no usable shared proximity input resolves to ``far`` rather than retaining
+    a previously close band.
     """
     if presence_personal == PERS_HOME:
         return BAND_HOME
     if distance_m is None:
+        if profile == PROFILE_ELTERN and presence_personal == PERS_AWAY:
+            # Reliable household-away evidence is enough for a deterministic
+            # far result when no proximity value is usable. Both absent/stale
+            # trackers were retained above and therefore do not reach this as
+            # a newly fabricated away transition.
+            return BAND_FAR
         # No proximity data: collapse to "far" unless we already had a more
         # specific band, in which case keep it (no spurious flips).
         return prev_band or BAND_FAR
@@ -1731,6 +1790,7 @@ def apply_activity_hold(
     activity: str,
     home_band: str,
     proximity_trend: str,
+    profile: str = PROFILE_BENNI,
 ) -> ActivityHoldResult:
     """Halte ``presence_effective`` bei rohem ``abwesend`` per starker Aktivität
     auf ``home`` — OHNE ``presence_personal`` zu verändern (der bleibt roher Owner).
@@ -1757,6 +1817,19 @@ def apply_activity_hold(
 
     Rein / testbar; kein HA-Import. ``presence_personal`` wird nie geschrieben.
     """
+    if profile == PROFILE_ELTERN:
+        # The two mobile trackers are the parents profile's exclusive
+        # household-presence evidence. Shared activity must not fabricate a
+        # third, assumed-home source when both trackers report away.
+        return ActivityHoldResult(
+            base_effective,
+            base_transition,
+            False,
+            "eltern_tracker_evidence_only",
+            HOLD_NONE,
+            None,
+            False,
+        )
     if presence_personal == PERS_HOME:
         return ActivityHoldResult(
             base_effective, base_transition, False, "raw_home", HOLD_NONE, None, False
