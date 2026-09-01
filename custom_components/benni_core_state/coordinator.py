@@ -91,6 +91,7 @@ from .const import (
     DOMAIN,
     PERS_AWAY,
     PERS_PARENTS,
+    PROFILE_ELTERN,
     PROFILE_PREFILL,
     PROFILE_SSIDS,
     STORAGE_VERSION,
@@ -768,6 +769,7 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
             gps_secondary=gps_secondary, gps_secondary_ts=gps_secondary_ts,
             now=now, freshness_s=self.tracker_freshness,
             prev_personal=self._persistent.last_presence_personal,
+            profile=self.profile,
         )
         # Retain the decided value across restarts (rule 7 reads it back on the
         # first post-boot compute, before trackers have restored).
@@ -776,7 +778,7 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
         household_raw, _, _ = self._read_entity(CONF_HOUSEHOLD_SOURCE)
         external_occupied = _state_is_true(household_raw)
         presence_household = logic.compute_presence_household(
-            presence_personal, external_occupied
+            presence_personal, external_occupied, profile=self.profile
         )
 
         prev_band = self.data.presence_band if self.data is not None else None
@@ -785,10 +787,20 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
             home_r=self.home_radius, preheat_r=self.preheat_radius,
             near_r=self.near_radius, hysteresis_m=self.hysteresis_m,
             prev_band=prev_band,
+            profile=self.profile,
         )
 
-        person_source_ts = _latest_datetime(
-            gps_primary_ts, gps_secondary_ts, wlan_benni_ts, wlan_e1_ts, wlan_e2_ts, ssid_ts
+        person_source_ts = (
+            _latest_datetime(gps_primary_ts, gps_secondary_ts)
+            if self.profile == PROFILE_ELTERN
+            else _latest_datetime(
+                gps_primary_ts,
+                gps_secondary_ts,
+                wlan_benni_ts,
+                wlan_e1_ts,
+                wlan_e2_ts,
+                ssid_ts,
+            )
         )
         band_source_ts = prox_dist_ts if prox_dist is not None else person_source_ts
         effective = logic.compute_effective_presence(
@@ -1157,6 +1169,7 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
             activity=activity,
             home_band=presence_band,
             proximity_trend=effective.proximity_trend,
+            profile=self.profile,
         )
 
         master = ".".join(
@@ -1171,6 +1184,12 @@ class BenniCoreStateCoordinator(DataUpdateCoordinator[ComputedState]):
         wake_attrs = wake_plan.as_attributes(wake_comparison)
         attrs = {
             "presence_personal": {
+                "profile": self.profile,
+                "evidence_mode": (
+                    "equal_household_trackers"
+                    if self.profile == PROFILE_ELTERN
+                    else "benni_primary_fallback"
+                ),
                 "ssid": ssid,
                 "ssid_is_home": logic._ssid_matches(ssid, home_ssids),
                 "ssid_is_parents": logic._ssid_matches(ssid, parents_ssids),

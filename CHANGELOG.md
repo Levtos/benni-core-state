@@ -5,6 +5,16 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
 ## [Unreleased]
 
+## [0.11.8] - 2026-09-02
+
+### Added
+- Das Profil `eltern` wertet die bestehenden Primary-/Secondary-Tracker als
+  zwei gleichwertige Quellen für einen gemeinsamen Haushaltszustand aus. Ein
+  verlässliches `home` gewinnt; Away/Far entsteht nur aus der aktuell
+  verlässlichen Evidence, während Unknown/Unavailable/Stale den restartfesten
+  Vorzustand hält. Benni-Logik, Entity-/Unique-ID- und Storage-Verträge bleiben
+  unverändert ([#62](https://github.com/Levtos/benni-core-state/issues/62)).
+
 ## [0.11.7] - 2026-08-31
 
 ### Fixed

@@ -1,7 +1,8 @@
 # Benni Core State
 
 Standalone Home-Assistant-Integration, die stabile, meinungsstarke Kontext-Sensoren
-für ein persönliches Smart-Home liefert: **Presence**, **Bio**, **Day**, **Activity**
+für ein persönliches oder gemeinsames Haushaltsprofil liefert: **Presence**,
+**Bio**, **Day**, **Activity**
 und ein **Master-Context**. Statt YAML-Template-Spaghetti gibt es einen einzigen,
 testbaren Coordinator mit Enum-Sensoren, Attributen, Hysterese, Freshness-Checks
 und Restore-on-Restart.
@@ -87,6 +88,19 @@ statt auf `unavailable` zu gehen.
 
 ## Fachregeln (binding, unverändert)
 
+* **Profil `eltern`:** Die historisch benannten Slots `gps_primary` und
+  `gps_secondary` sind zwei gleichwertige Evidence-Quellen für genau einen
+  gemeinsamen Haushaltszustand. Jedes frische, verlässliche `home` gewinnt;
+  andernfalls entscheidet die Menge der aktuell verlässlichen Away-Signale.
+  Unknown/unavailable/stale hält den restartfesten Vorzustand. Der bestehende
+  Proximity-Eingang wird auf die HA-Sensoren für nächste Distanz und Richtung
+  über beide Tracker gebunden. `presence_personal` bleibt als historischer
+  öffentlicher Name erhalten, bezeichnet hier aber keine einzelne Person.
+  Externe Occupancy-Slots und der Benni-spezifische Activity-Hold werden in
+  diesem Profil nicht als zusätzliche Presence-Quellen gewertet.
+  Details:
+  [Eltern household-presence decision](docs/architecture/2026-09-02-eltern-household-presence.md).
+
 * **`bei_eltern`** ist ein eigener Presence-State und **home-equivalent**: keine
   Away-Abschaltung, keine Anwesenheitssimulation. Eltern-WLAN wird ohne
   Freshness-Gate gewertet. Aus `bei_eltern` heraus gibt es **kein** `coming_home`
@@ -155,10 +169,11 @@ Provenance und eine neue Lifecycle-Referenz.
 * **Add-Flow** (dreistufig, single-instance): `user` (**Route/Profil**:
   Benni · Eltern) → `entities` (Quell-Entities, profil-vorbefüllt) →
   `thresholds` (Radien & Zeitfenster).
-* **Options-Flow** als Menü: `entities` | `thresholds`.
+* **Options-Flow** als Menü: `entities` | `ssids` | `thresholds`.
 * Das gewählte Profil bestimmt (a) den Entity-Slug (`benni_`/`eltern_`),
-  (b) das Vorbefüll-Set und (c) das Panel-Label. Route **Eltern** ist heute
-  ohne Prefill (alle Slots leer) — wird befüllt, sobald die Eltern-Anlage real ist.
+  (b) das Vorbefüll-Set und (c) das Panel-Label. Route **Eltern** bleibt ohne
+  private Prefills; beide mobilen Presence-Quellen und der gemeinsame
+  Nearest-Proximity-Eingang werden dort explizit ausgewählt.
 
 ### Quell-Bindung (Auto-Bind)
 
