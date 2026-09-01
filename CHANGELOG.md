@@ -5,6 +5,8 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
 ## [Unreleased]
 
+## [0.11.8] - 2026-09-02
+
 ### Added
 - Das Profil `eltern` wertet die bestehenden Primary-/Secondary-Tracker als
   zwei gleichwertige Quellen für einen gemeinsamen Haushaltszustand aus. Ein
